@@ -1,0 +1,22 @@
+[package]
+name = "machctrl"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "machctrl"
+path = "src/main.rs"
+
+[dependencies]
+gtk = { package = "gtk4", version = "0.7" }
+adw = { package = "libadwaita", version = "0.5" }
+glib = "0.18"
+serde = { version = "1", features = ["derive"] }
+glob = "0.3"
+indexmap = "=2.2.6"
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+panic = "abort"
