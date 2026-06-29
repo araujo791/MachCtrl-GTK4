@@ -509,15 +509,15 @@ struct NavItem {
 }
 
 const NAV_ITEMS: &[NavItem] = &[
-    NavItem { id: "overview", label: "Visão Geral", icon: "video-display-symbolic" },
-    NavItem { id: "cpu", label: "CPU", icon: "computer-symbolic" },
-    NavItem { id: "memory", label: "Memória", icon: "media-flash-symbolic" },
-    NavItem { id: "disks", label: "Discos", icon: "drive-harddisk-symbolic" },
-    NavItem { id: "fans", label: "Fans", icon: "weather-windy-symbolic" },
-    NavItem { id: "energy", label: "Energia", icon: "preferences-system-symbolic" },
-    NavItem { id: "cleaner", label: "Limpeza", icon: "user-trash-symbolic" },
-    NavItem { id: "benchmark", label: "Benchmark", icon: "media-playback-start-symbolic" },
-    NavItem { id: "about", label: "Sobre", icon: "dialog-information-symbolic" },
+    NavItem { id: "overview", label: "Visão Geral", icon: "assets/icons/overview.svg" },
+    NavItem { id: "cpu", label: "CPU", icon: "assets/icons/cpu.svg" },
+    NavItem { id: "memory", label: "Memória", icon: "assets/icons/memory.svg" },
+    NavItem { id: "disks", label: "Discos", icon: "assets/icons/disks.svg" },
+    NavItem { id: "fans", label: "Fans", icon: "assets/icons/fans.svg" },
+    NavItem { id: "energy", label: "Energia", icon: "assets/icons/energy.svg" },
+    NavItem { id: "cleaner", label: "Limpeza", icon: "assets/icons/cleaner.svg" },
+    NavItem { id: "benchmark", label: "Benchmark", icon: "assets/icons/benchmark.svg" },
+    NavItem { id: "about", label: "Sobre", icon: "assets/icons/about.svg" },
 ];
 
 fn build_sidebar(stack: &gtk::Stack) -> gtk::Box {
@@ -534,8 +534,8 @@ fn build_sidebar(stack: &gtk::Stack) -> gtk::Box {
 
         let content = gtk::Box::new(gtk::Orientation::Vertical, 4);
         content.set_halign(gtk::Align::Center);
-        let icon = gtk::Image::from_icon_name(item.icon);
-        icon.set_pixel_size(20);
+        let icon = gtk::Image::from_file(item.icon);
+        icon.set_pixel_size(28);
         icon.set_halign(gtk::Align::Center);
         let lbl = gtk::Label::new(Some(item.label));
         lbl.set_halign(gtk::Align::Center);
