@@ -505,18 +505,19 @@ fn build_placeholder_page(title: &str, msg: &str) -> gtk::Box {
 struct NavItem {
     id: &'static str,
     label: &'static str,
+    icon: &'static str,
 }
 
 const NAV_ITEMS: &[NavItem] = &[
-    NavItem { id: "overview", label: "Visão Geral" },
-    NavItem { id: "cpu", label: "CPU" },
-    NavItem { id: "memory", label: "Memória" },
-    NavItem { id: "disks", label: "Discos" },
-    NavItem { id: "fans", label: "Fans" },
-    NavItem { id: "energy", label: "Energia" },
-    NavItem { id: "cleaner", label: "Limpeza" },
-    NavItem { id: "benchmark", label: "Benchmark" },
-    NavItem { id: "about", label: "Sobre" },
+    NavItem { id: "overview", label: "Visão Geral", icon: "video-display-symbolic" },
+    NavItem { id: "cpu", label: "CPU", icon: "computer-symbolic" },
+    NavItem { id: "memory", label: "Memória", icon: "media-flash-symbolic" },
+    NavItem { id: "disks", label: "Discos", icon: "drive-harddisk-symbolic" },
+    NavItem { id: "fans", label: "Fans", icon: "weather-windy-symbolic" },
+    NavItem { id: "energy", label: "Energia", icon: "preferences-system-symbolic" },
+    NavItem { id: "cleaner", label: "Limpeza", icon: "user-trash-symbolic" },
+    NavItem { id: "benchmark", label: "Benchmark", icon: "media-playback-start-symbolic" },
+    NavItem { id: "about", label: "Sobre", icon: "dialog-information-symbolic" },
 ];
 
 fn build_sidebar(stack: &gtk::Stack) -> gtk::Box {
@@ -533,7 +534,8 @@ fn build_sidebar(stack: &gtk::Stack) -> gtk::Box {
 
         let content = gtk::Box::new(gtk::Orientation::Vertical, 4);
         content.set_halign(gtk::Align::Center);
-        let icon = gtk::Label::new(Some("●"));
+        let icon = gtk::Image::from_icon_name(item.icon);
+        icon.set_pixel_size(20);
         icon.set_halign(gtk::Align::Center);
         let lbl = gtk::Label::new(Some(item.label));
         lbl.set_halign(gtk::Align::Center);
@@ -569,10 +571,22 @@ fn main() -> glib::ExitCode {
     app.connect_activate(|app| {
         adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceLight);
 
+        let display = gtk::gdk::Display::default().expect("sem display");
+
+        // Garante os ícones de Adwaita como busca extra, independente do tema de ícones
+        // ativo no sistema (GNOME/KDE/etc podem usar outro tema por padrão que não tenha
+        // os nomes simbólicos que usamos na sidebar).
+        let icon_theme = gtk::IconTheme::for_display(&display);
+        for path in ["/usr/share/icons/Adwaita", "/usr/local/share/icons/Adwaita"] {
+            if std::path::Path::new(path).exists() {
+                icon_theme.add_search_path(path);
+            }
+        }
+
         let provider = gtk::CssProvider::new();
         provider.load_from_path("src/style.css");
         gtk::style_context_add_provider_for_display(
-            &gtk::gdk::Display::default().expect("sem display"),
+            &display,
             &provider,
             gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
         );
@@ -587,6 +601,9 @@ fn main() -> glib::ExitCode {
         // --- header bar ---
         let header = adw::HeaderBar::new();
         let title_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let app_icon = gtk::Image::from_file("assets/app-icon.png");
+        app_icon.set_pixel_size(22);
+        title_box.append(&app_icon);
         let name_lbl = gtk::Label::new(Some(APP_NAME));
         name_lbl.add_css_class("title-2");
         title_box.append(&name_lbl);
