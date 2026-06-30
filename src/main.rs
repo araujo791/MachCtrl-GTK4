@@ -95,29 +95,50 @@ fn build_sparkline_snapshot(data: Vec<f32>, rgb: (f64, f64, f64)) -> gtk::Drawin
 /// Tenta mapear temperaturas "Core N" (coretemp/k10temp) para cada CPU lógico, assumindo
 /// hyperthreading/SMT uniforme (threads_per_core = núcleos lógicos / núcleos físicos com
 /// sensor). Aproximação razoável já que /proc não expõe essa topologia diretamente.
-fn build_core_temp_map(temps: &[hwmon::TempSensor], core_count: usize) -> Vec<Option<f64>> {
-    let mut core_temps: Vec<(usize, f64)> = temps
-        .iter()
-        .filter_map(|t| {
-            t.label
-                .to_lowercase()
-                .strip_prefix("core ")
-                .and_then(|n| n.trim().parse::<usize>().ok())
-                .map(|n| (n, t.value_c))
-        })
-        .collect();
-    core_temps.sort_by_key(|(n, _)| *n);
+/// Mapeia temperaturas "Core N" para cada CPU lógico, ciente de múltiplos sockets.
+///
+/// Em sistemas Intel multi-socket, cada socket tem seu próprio chip `coretemp` (coretemp,
+/// coretemp_2, ...), e cada um expõe "Core 0".."Core N" começando do zero. Antes a função
+/// juntava todos num índice linear global, o que bagunçava o mapeamento no segundo socket.
+/// Agora agrupa os sensores por chip, ordena os chips, e casa o i-ésimo chip com o i-ésimo
+/// socket — distribuindo a temp de cada core físico para seus threads lógicos (SMT).
+fn build_core_temp_map(
+    temps: &[hwmon::TempSensor],
+    sockets: &[procstat::SocketInfo],
+) -> std::collections::HashMap<usize, f64> {
+    use std::collections::HashMap;
+    let mut map: HashMap<usize, f64> = HashMap::new();
 
-    let mut map = vec![None; core_count];
-    if core_temps.is_empty() {
+    // Agrupa sensores "Core N" por chip
+    let mut by_chip: HashMap<String, Vec<(usize, f64)>> = HashMap::new();
+    for t in temps {
+        if let Some(n) = t.label.to_lowercase().strip_prefix("core ").and_then(|s| s.trim().parse::<usize>().ok()) {
+            by_chip.entry(t.chip.clone()).or_default().push((n, t.value_c));
+        }
+    }
+    if by_chip.is_empty() || sockets.is_empty() {
         return map;
     }
-    let threads_per_core = (core_count / core_temps.len()).max(1);
-    for (phys_idx, temp) in &core_temps {
-        for t in 0..threads_per_core {
-            let logical = phys_idx * threads_per_core + t;
-            if logical < core_count {
-                map[logical] = Some(*temp);
+
+    // Ordena os chips por nome (coretemp, coretemp_2, ...) para casar com a ordem dos sockets
+    let mut chips: Vec<(String, Vec<(usize, f64)>)> = by_chip.into_iter().collect();
+    chips.sort_by(|a, b| a.0.cmp(&b.0));
+
+    for (chip_idx, (_chip, mut core_temps)) in chips.into_iter().enumerate() {
+        let Some(socket) = sockets.get(chip_idx).or_else(|| sockets.first()) else { continue };
+        core_temps.sort_by_key(|(n, _)| *n);
+        if core_temps.is_empty() {
+            continue;
+        }
+        // Threads lógicos deste socket, em ordem
+        let logical = &socket.logical_ids;
+        let threads_per_core = (logical.len() / core_temps.len()).max(1);
+        for (phys_idx, (_core_n, temp)) in core_temps.iter().enumerate() {
+            for t in 0..threads_per_core {
+                let pos = phys_idx * threads_per_core + t;
+                if let Some(&logical_id) = logical.get(pos) {
+                    map.insert(logical_id, *temp);
+                }
             }
         }
     }
@@ -546,8 +567,8 @@ fn refresh_cpu_page(
     clear_box(container);
 
     let (temps, _) = hwmon::read_all_temps_and_fans();
-    let core_temp_map = build_core_temp_map(&temps, procstat::cpu_core_count());
     let sockets = procstat::read_cpu_topology();
+    let core_temp_map = build_core_temp_map(&temps, &sockets);
 
     state.cpu_page_hist.push_back(cpu_usage);
     if state.cpu_page_hist.len() > HISTORY_LEN {
@@ -637,7 +658,7 @@ fn refresh_cpu_page(
             let cur = cur_cores.get(&id).copied().unwrap_or_default();
             let prev = state.prev_cpu_cores.get(&id).copied().unwrap_or_default();
             let pct = procstat::usage_pct(&prev, &cur);
-            let core_temp = core_temp_map.get(id).copied().flatten();
+            let core_temp = core_temp_map.get(&id).copied();
 
             // Atualiza o histórico deste núcleo
             let hist = state.core_hist.entry(id).or_default();
