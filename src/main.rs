@@ -25,6 +25,8 @@ struct AppState {
     rapl: power::RaplReader,
     prev_net: Vec<procstat::NetAdapter>,
     cpu_page_hist: VecDeque<f32>,
+    // Histórico de uso por núcleo lógico, para o mini-gráfico de atividade em cada célula
+    core_hist: std::collections::HashMap<usize, VecDeque<f32>>,
 }
 
 impl AppState {
@@ -36,6 +38,7 @@ impl AppState {
             rapl: power::RaplReader::new(),
             prev_net: procstat::read_net_counters(),
             cpu_page_hist: VecDeque::new(),
+            core_hist: std::collections::HashMap::new(),
         }
     }
 }
@@ -129,6 +132,110 @@ fn temp_css_class(temp_c: f64) -> &'static str {
     } else {
         "temp-cool"
     }
+}
+
+/// Constrói a célula de um núcleo no estilo da v2.0: um mini-card onde o fundo é um
+/// gráfico de área (atividade do núcleo nos últimos segundos), uma barra de temperatura
+/// VERTICAL no canto direito, e o texto (% e Tn) sobreposto. Tudo desenhado via Cairo
+/// numa única DrawingArea, com Overlay pra colocar os labels por cima.
+fn build_core_cell(
+    usage_history: Vec<f32>,
+    current_pct: f32,
+    core_id: usize,
+    temp_c: Option<f64>,
+) -> gtk::Widget {
+    let da = gtk::DrawingArea::new();
+    da.set_content_width(64);
+    da.set_content_height(48);
+    da.set_hexpand(true);
+
+    let hist = usage_history.clone();
+    da.set_draw_func(move |_, cr, w, h| {
+        let w = w as f64;
+        let h = h as f64;
+
+        // Fundo do card (cinza claro arredondado)
+        let r = 6.0;
+        rounded_rect(cr, 0.0, 0.0, w, h, r);
+        cr.set_source_rgb(0.953, 0.957, 0.965); // #f3f4f6
+        let _ = cr.fill();
+
+        // Gráfico de área da atividade do núcleo (azul translúcido)
+        if hist.len() >= 2 {
+            let n = hist.len();
+            let step = w / (n as f64 - 1.0);
+            let y_of = |v: f32| h - ((v as f64 / 100.0).clamp(0.0, 1.0) * (h * 0.7)) - 2.0;
+            cr.move_to(0.0, y_of(hist[0]));
+            for (i, v) in hist.iter().enumerate().skip(1) {
+                cr.line_to(i as f64 * step, y_of(*v));
+            }
+            cr.set_line_width(1.5);
+            cr.set_source_rgba(0.145, 0.388, 0.922, 0.9);
+            let _ = cr.stroke_preserve();
+            cr.line_to(w, h);
+            cr.line_to(0.0, h);
+            cr.close_path();
+            cr.set_source_rgba(0.145, 0.388, 0.922, 0.12);
+            let _ = cr.fill();
+        }
+
+        // Barra de temperatura VERTICAL no canto direito (igual à v2.0)
+        let bar_w = 4.0;
+        let bar_x = w - bar_w - 3.0;
+        let (frac, rgb) = match temp_c {
+            Some(t) => {
+                // mapeia 30-90°C para 0-100% de altura
+                let frac = ((t - 30.0) / 60.0).clamp(0.05, 1.0);
+                let rgb = if t >= 80.0 {
+                    (0.937, 0.267, 0.267) // vermelho
+                } else if t >= 60.0 {
+                    (0.961, 0.620, 0.043) // laranja
+                } else {
+                    (0.204, 0.827, 0.600) // verde
+                };
+                (frac, rgb)
+            }
+            None => (0.0, (0.82, 0.835, 0.859)),
+        };
+        if frac > 0.0 {
+            let bar_h = (h - 8.0) * frac;
+            rounded_rect(cr, bar_x, h - 4.0 - bar_h, bar_w, bar_h, 2.0);
+            cr.set_source_rgb(rgb.0, rgb.1, rgb.2);
+            let _ = cr.fill();
+        }
+    });
+
+    // Labels sobrepostos (% em destaque + Tn embaixo)
+    let overlay = gtk::Overlay::new();
+    overlay.set_child(Some(&da));
+
+    let labels = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    labels.set_halign(gtk::Align::Start);
+    labels.set_valign(gtk::Align::Start);
+    labels.set_margin_start(6);
+    labels.set_margin_top(4);
+    let pct_lbl = gtk::Label::new(Some(&format!("{current_pct:.0}%")));
+    pct_lbl.add_css_class(if current_pct > 70.0 { "stat-orange" } else { "stat-blue" });
+    pct_lbl.set_halign(gtk::Align::Start);
+    let id_lbl = gtk::Label::new(Some(&format!("T{core_id}")));
+    id_lbl.add_css_class("core-id");
+    id_lbl.set_halign(gtk::Align::Start);
+    labels.append(&pct_lbl);
+    labels.append(&id_lbl);
+    overlay.add_overlay(&labels);
+
+    overlay.upcast()
+}
+
+/// Desenha um retângulo arredondado no contexto Cairo (helper pra build_core_cell).
+fn rounded_rect(cr: &gtk::cairo::Context, x: f64, y: f64, w: f64, h: f64, r: f64) {
+    use std::f64::consts::PI;
+    cr.new_sub_path();
+    cr.arc(x + w - r, y + r, r, -PI / 2.0, 0.0);
+    cr.arc(x + w - r, y + h - r, r, 0.0, PI / 2.0);
+    cr.arc(x + r, y + h - r, r, PI / 2.0, PI);
+    cr.arc(x + r, y + r, r, PI, 1.5 * PI);
+    cr.close_path();
 }
 
 // --- helpers de construção de UI ---
@@ -418,84 +525,126 @@ fn refresh_cpu_page(
 ) {
     clear_box(container);
 
-    let model = procstat::read_cpu_model();
-    let freq = procstat::read_cpu_freq_mhz();
     let (temps, _) = hwmon::read_all_temps_and_fans();
-    let pkg_temp = temps
-        .iter()
-        .find(|t| t.label.to_lowercase().contains("tctl") || t.label.to_lowercase().contains("package"))
-        .or_else(|| temps.first())
-        .map(|t| t.value_c);
-
-    let inner = gtk::Box::new(gtk::Orientation::Vertical, 12);
-    inner.add_css_class("card");
-
-    let header_row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    let model_box = gtk::Box::new(gtk::Orientation::Vertical, 2);
-    let model_lbl = gtk::Label::new(Some(&model));
-    model_lbl.set_halign(gtk::Align::Start);
-    model_lbl.add_css_class("card-title");
-    model_box.append(&model_lbl);
-    let sub_lbl = gtk::Label::new(Some(&format!("{} núcleos (lógicos)", procstat::cpu_core_count())));
-    sub_lbl.set_halign(gtk::Align::Start);
-    sub_lbl.add_css_class("stat-gray");
-    model_box.append(&sub_lbl);
-    model_box.set_hexpand(true);
-    header_row.append(&model_box);
-
-    header_row.set_spacing(24);
-    header_row.append(&stat_row("Uso médio", &stat_label(&format!("{cpu_usage:.0}%"), "stat-blue")));
-    header_row.append(&stat_row("Temp", &stat_label(&pkg_temp.map(|t| format!("{t:.0}°C")).unwrap_or_else(|| "—".into()), "stat-green")));
-    header_row.append(&stat_row("Freq", &stat_label(&format!("{freq} MHz"), "stat-gray")));
-    header_row.append(&stat_row("Consumo", &stat_label(&cpu_watts.map(|w| format!("{w:.1} W")).unwrap_or_else(|| "—".into()), "stat-orange")));
-    inner.append(&header_row);
+    let core_temp_map = build_core_temp_map(&temps, procstat::cpu_core_count());
+    let sockets = procstat::read_cpu_topology();
 
     state.cpu_page_hist.push_back(cpu_usage);
     if state.cpu_page_hist.len() > HISTORY_LEN {
         state.cpu_page_hist.pop_front();
     }
-    let spark = build_sparkline_snapshot(state.cpu_page_hist.iter().copied().collect(), (0.145, 0.388, 0.922));
-    inner.append(&spark);
 
-    let core_temp_map = build_core_temp_map(&temps, procstat::cpu_core_count());
+    for socket in &sockets {
+        let socket_usage: f32 = {
+            let total: f32 = socket.logical_ids.iter()
+                .map(|&id| {
+                    let cur = cur_cores.get(&id).copied().unwrap_or_default();
+                    let prev = state.prev_cpu_cores.get(&id).copied().unwrap_or_default();
+                    procstat::usage_pct(&prev, &cur)
+                })
+                .sum();
+            total / socket.logical_ids.len().max(1) as f32
+        };
 
-    let flow = gtk::FlowBox::new();
-    flow.set_selection_mode(gtk::SelectionMode::None);
-    flow.set_max_children_per_line(16);
-    flow.set_row_spacing(6);
-    flow.set_column_spacing(6);
+        let pkg_temp = temps.iter()
+            .find(|t| {
+                let l = t.label.to_lowercase();
+                l.contains("tctl") || l.contains("tdie") || l.contains("package")
+            })
+            .or_else(|| temps.first())
+            .map(|t| t.value_c);
 
-    let mut core_ids: Vec<usize> = cur_cores.keys().copied().collect();
-    core_ids.sort();
-    for id in core_ids {
-        let cur = cur_cores[&id];
-        let prev = state.prev_cpu_cores.get(&id).copied().unwrap_or_default();
-        let pct = procstat::usage_pct(&prev, &cur);
-        let core_temp = core_temp_map.get(id).copied().flatten();
+        let socket_card = gtk::Box::new(gtk::Orientation::Vertical, 12);
+        socket_card.add_css_class("card");
 
-        let cell = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        cell.add_css_class("core-cell");
-        let pct_lbl = gtk::Label::new(Some(&format!("{pct:.0}%")));
-        pct_lbl.add_css_class(if pct > 70.0 { "stat-orange" } else { "stat-blue" });
-        let id_lbl = gtk::Label::new(Some(&format!("T{id}")));
-        id_lbl.add_css_class("stat-gray");
-        cell.append(&pct_lbl);
-        cell.append(&id_lbl);
+        // ---- header: badge CPU N + modelo + stats ----
+        let header_row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
 
-        let temp_bar = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        temp_bar.set_size_request(-1, 3);
-        temp_bar.set_margin_top(4);
-        if let Some(t) = core_temp {
-            temp_bar.add_css_class(temp_css_class(t));
-        } else {
-            temp_bar.add_css_class("temp-unknown");
+        let badge_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        badge_box.add_css_class("cpu-badge");
+        badge_box.set_size_request(52, 52);
+        badge_box.set_halign(gtk::Align::Center);
+        badge_box.set_valign(gtk::Align::Center);
+        let badge_top = gtk::Label::new(Some("CPU"));
+        badge_top.add_css_class("cpu-badge-top");
+        let badge_num = gtk::Label::new(Some(&socket.socket_id.to_string()));
+        badge_num.add_css_class("cpu-badge-num");
+        badge_box.append(&badge_top);
+        badge_box.append(&badge_num);
+        header_row.append(&badge_box);
+
+        let info_box = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        info_box.set_hexpand(true);
+        let model_lbl = gtk::Label::new(Some(&socket.model));
+        model_lbl.set_halign(gtk::Align::Start);
+        model_lbl.add_css_class("card-title");
+        info_box.append(&model_lbl);
+        let phys_cores = procstat::read_cpu_cores_for_socket(&socket.logical_ids);
+        let threads = socket.logical_ids.len();
+        let sub_lbl = gtk::Label::new(Some(&format!(
+            "{phys_cores} núcleos · {threads} threads · {:.2} GHz",
+            socket.freq_mhz as f64 / 1000.0
+        )));
+        sub_lbl.set_halign(gtk::Align::Start);
+        sub_lbl.add_css_class("stat-gray");
+        info_box.append(&sub_lbl);
+        header_row.append(&info_box);
+
+        let stats_box = gtk::Box::new(gtk::Orientation::Horizontal, 24);
+        stats_box.append(&stat_row("Uso médio", &stat_label(&format!("{socket_usage:.0}%"), "stat-blue")));
+        stats_box.append(&stat_row("Package", &stat_label(
+            &pkg_temp.map(|t| format!("{t:.0}°C")).unwrap_or_else(|| "—".into()), "stat-green")));
+        stats_box.append(&stat_row("Freq", &stat_label(&format!("{:.2} GHz", socket.freq_mhz as f64 / 1000.0), "stat-gray")));
+        stats_box.append(&stat_row("Consumo", &stat_label(
+            &cpu_watts.map(|w| format!("{w:.1} W")).unwrap_or_else(|| "—".into()), "stat-orange")));
+        header_row.append(&stats_box);
+        socket_card.append(&header_row);
+
+        // ---- sparkline ----
+        let spark = build_sparkline_snapshot(
+            state.cpu_page_hist.iter().copied().collect(),
+            (0.145, 0.388, 0.922),
+        );
+        socket_card.append(&spark);
+
+        // ---- grid de cores deste socket ----
+        let flow = gtk::FlowBox::new();
+        flow.set_selection_mode(gtk::SelectionMode::None);
+        flow.set_max_children_per_line(14);
+        flow.set_row_spacing(6);
+        flow.set_column_spacing(6);
+
+        for &id in &socket.logical_ids {
+            let cur = cur_cores.get(&id).copied().unwrap_or_default();
+            let prev = state.prev_cpu_cores.get(&id).copied().unwrap_or_default();
+            let pct = procstat::usage_pct(&prev, &cur);
+            let core_temp = core_temp_map.get(id).copied().flatten();
+
+            // Atualiza o histórico deste núcleo
+            let hist = state.core_hist.entry(id).or_default();
+            hist.push_back(pct);
+            if hist.len() > HISTORY_LEN {
+                hist.pop_front();
+            }
+            let hist_vec: Vec<f32> = hist.iter().copied().collect();
+
+            let cell = build_core_cell(hist_vec, pct, id, core_temp);
+            flow.insert(&cell, -1);
         }
-        cell.append(&temp_bar);
+        socket_card.append(&flow);
 
-        flow.insert(&cell, -1);
+        // ---- legenda ----
+        let legend = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        let l1 = gtk::Label::new(Some("▬ Atividade (%)"));
+        l1.add_css_class("stat-gray");
+        let l2 = gtk::Label::new(Some("▮ Temperatura (°C)"));
+        l2.add_css_class("stat-orange");
+        legend.append(&l1);
+        legend.append(&l2);
+        socket_card.append(&legend);
+
+        container.append(&socket_card);
     }
-    inner.append(&flow);
-    container.append(&inner);
 }
 
 // --- página: Fans ---
@@ -890,7 +1039,7 @@ fn main() -> glib::ExitCode {
         }
 
         let provider = gtk::CssProvider::new();
-        provider.load_from_data(include_str!("style.css").as_bytes());
+        provider.load_from_data(include_str!("style.css"));
         gtk::style_context_add_provider_for_display(
             &display,
             &provider,

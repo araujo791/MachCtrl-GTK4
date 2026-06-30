@@ -120,3 +120,26 @@ window, .background {
   border-radius: 4px;
   min-height: 8px;
 }
+
+.cpu-badge {
+  background-color: #eaf2ff;
+  border-radius: 10px;
+  padding: 6px 10px;
+  min-width: 52px;
+  min-height: 52px;
+}
+.cpu-badge-top {
+  font-size: 10px;
+  color: #2563eb;
+  font-weight: bold;
+}
+.cpu-badge-num {
+  font-size: 20px;
+  color: #2563eb;
+  font-weight: 800;
+}
+
+.core-id {
+  font-size: 9px;
+  color: #9ca3af;
+}

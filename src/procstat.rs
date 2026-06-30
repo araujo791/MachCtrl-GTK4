@@ -313,3 +313,87 @@ pub fn read_uptime_human() -> String {
     let m = ((secs % 3600.0) / 60.0) as u64;
     format!("{h}h {m}m")
 }
+
+#[derive(Clone, Debug)]
+pub struct SocketInfo {
+    pub socket_id: usize,
+    pub model: String,
+    pub logical_ids: Vec<usize>,
+    pub freq_mhz: u64,
+}
+
+pub fn read_cpu_topology() -> Vec<SocketInfo> {
+    let Ok(content) = fs::read_to_string("/proc/cpuinfo") else {
+        return vec![SocketInfo {
+            socket_id: 0,
+            model: read_cpu_model(),
+            logical_ids: (0..cpu_core_count()).collect(),
+            freq_mhz: read_cpu_freq_mhz(),
+        }];
+    };
+
+    let mut sockets: std::collections::HashMap<usize, SocketInfo> = std::collections::HashMap::new();
+
+    for block in content.split("\n\n") {
+        let field = |key: &str| -> Option<String> {
+            block.lines().find(|l| l.starts_with(key))
+                .and_then(|l| l.split(':').nth(1))
+                .map(|v| v.trim().to_string())
+        };
+        let Some(proc_id_str) = field("processor") else { continue };
+        let Ok(proc_id) = proc_id_str.parse::<usize>() else { continue };
+        let physical_id = field("physical id").and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
+        let model = field("model name").unwrap_or_else(|| "CPU desconhecida".to_string());
+        let freq_mhz = field("cpu MHz").and_then(|s| s.parse::<f64>().ok()).map(|f| f as u64).unwrap_or(0);
+
+        let socket = sockets.entry(physical_id).or_insert_with(|| SocketInfo {
+            socket_id: physical_id,
+            model: model.clone(),
+            logical_ids: Vec::new(),
+            freq_mhz,
+        });
+        socket.logical_ids.push(proc_id);
+        if socket.freq_mhz == 0 { socket.freq_mhz = freq_mhz; }
+    }
+
+    if sockets.is_empty() {
+        return vec![SocketInfo {
+            socket_id: 0,
+            model: read_cpu_model(),
+            logical_ids: (0..cpu_core_count()).collect(),
+            freq_mhz: read_cpu_freq_mhz(),
+        }];
+    }
+
+    let mut result: Vec<SocketInfo> = sockets.into_values().collect();
+    result.sort_by_key(|s| s.socket_id);
+    for s in &mut result {
+        s.logical_ids.sort();
+        if let Some(&first) = s.logical_ids.first() {
+            let freq_path = format!("/sys/devices/system/cpu/cpu{first}/cpufreq/scaling_cur_freq");
+            if let Ok(v) = fs::read_to_string(&freq_path) {
+                if let Ok(khz) = v.trim().parse::<u64>() { s.freq_mhz = khz / 1000; }
+            }
+        }
+    }
+    result
+}
+
+pub fn read_cpu_cores_for_socket(socket_logical_ids: &[usize]) -> usize {
+    fs::read_to_string("/proc/cpuinfo").ok()
+        .and_then(|content| {
+            content.split("\n\n")
+                .find(|block| block.lines().any(|l| {
+                    l.starts_with("processor") &&
+                    l.split(':').nth(1).and_then(|v| v.trim().parse::<usize>().ok())
+                     .map(|id| socket_logical_ids.contains(&id))
+                     .unwrap_or(false)
+                }))
+                .and_then(|block| {
+                    block.lines().find(|l| l.starts_with("cpu cores"))
+                        .and_then(|l| l.split(':').nth(1))
+                        .and_then(|v| v.trim().parse::<usize>().ok())
+                })
+        })
+        .unwrap_or(socket_logical_ids.len().max(1))
+}
