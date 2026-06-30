@@ -9,7 +9,7 @@ mod profiles;
 use adw::prelude::*;
 use gtk::glib;
 use std::cell::RefCell;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 
 const HISTORY_LEN: usize = 40;
@@ -172,9 +172,10 @@ fn page_header(title: &str, subtitle_box: &gtk::Box) -> gtk::Box {
 
 fn subtitle_box() -> gtk::Box {
     let hostname = procstat::read_hostname();
+    let distro = procstat::read_distro_name();
     let uptime = procstat::read_uptime_human();
     let b = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    let l = gtk::Label::new(Some(&format!("{hostname} · CachyOS · Uptime {uptime}")));
+    let l = gtk::Label::new(Some(&format!("{hostname} · {distro} · Uptime {uptime}")));
     l.add_css_class("page-subtitle");
     l.set_halign(gtk::Align::Start);
     b.append(&l);
@@ -189,6 +190,7 @@ struct OverviewWidgets {
     cpu_usage: gtk::Label,
     cpu_temp: gtk::Label,
     cpu_freq: gtk::Label,
+    cpu_power: gtk::Label,
     gpu_card: gtk::Box,
     disk_card: gtk::Box,
     net_card: gtk::Box,
@@ -217,9 +219,11 @@ fn build_overview_page() -> (gtk::Box, OverviewWidgets) {
     let cpu_usage = stat_label("0%", "stat-blue");
     let cpu_temp = stat_label("—", "stat-green");
     let cpu_freq = stat_label("—", "stat-gray");
+    let cpu_power = stat_label("—", "stat-orange");
     cpu_inner.append(&stat_row("Uso médio", &cpu_usage));
     cpu_inner.append(&stat_row("Temperatura", &cpu_temp));
     cpu_inner.append(&stat_row("Frequência", &cpu_freq));
+    cpu_inner.append(&stat_row("Consumo", &cpu_power));
     let cpu_hist = Rc::new(RefCell::new(VecDeque::new()));
     let cpu_spark = build_sparkline(cpu_hist.clone(), (0.145, 0.388, 0.922));
     cpu_inner.append(&cpu_spark);
@@ -271,6 +275,7 @@ fn build_overview_page() -> (gtk::Box, OverviewWidgets) {
             cpu_usage,
             cpu_temp,
             cpu_freq,
+            cpu_power,
             gpu_card: gpu_inner,
             disk_card: disk_inner,
             net_card: net_inner,
@@ -291,30 +296,26 @@ fn clear_box(b: &gtk::Box) {
     }
 }
 
-fn refresh_overview(w: &OverviewWidgets, state: &mut AppState) {
+fn refresh_overview(w: &OverviewWidgets, state: &mut AppState, cpu_usage: f32, cpu_watts: Option<f64>) {
     let mem = procstat::read_meminfo();
     w.ram_pct.set_text(&format!("{:.0}%", mem.usage_pct));
     w.ram_used.set_text(&format!("{:.1} / {:.1} GB", mem.used_gb, mem.total_gb));
 
-    let (overall, cores) = procstat::read_cpu_times();
-    let usage = procstat::usage_pct(&state.prev_cpu_overall, &overall);
-    state.prev_cpu_overall = overall;
-    state.prev_cpu_cores = cores;
-    w.cpu_usage.set_text(&format!("{usage:.0}%"));
+    w.cpu_usage.set_text(&format!("{cpu_usage:.0}%"));
     w.cpu_freq.set_text(&format!("{} MHz", procstat::read_cpu_freq_mhz()));
-    push_history(&w.cpu_hist, usage);
+    w.cpu_power.set_text(&cpu_watts.map(|w| format!("{w:.1} W")).unwrap_or_else(|| "—".into()));
+    push_history(&w.cpu_hist, cpu_usage);
     w.cpu_spark.queue_draw();
     push_history(&w.ram_hist, mem.usage_pct as f32);
     w.ram_spark.queue_draw();
 
-    let (temps, fans) = hwmon::read_all_temps_and_fans();
+    let (temps, _) = hwmon::read_all_temps_and_fans();
     let cpu_temp = temps
         .iter()
         .find(|t| t.label.to_lowercase().contains("tctl") || t.label.to_lowercase().contains("package"))
         .or_else(|| temps.first())
         .map(|t| t.value_c);
     w.cpu_temp.set_text(&cpu_temp.map(|t| format!("{t:.0}°C")).unwrap_or_else(|| "—".into()));
-    let _ = fans; // usado na página de Fans
 
     clear_box(&w.gpu_card);
     let gpus = gpu::read_all_gpus();
@@ -408,11 +409,15 @@ fn build_cpu_page() -> (gtk::Box, gtk::Box) {
     (page, container)
 }
 
-fn refresh_cpu_page(container: &gtk::Box, state: &mut AppState) {
+fn refresh_cpu_page(
+    container: &gtk::Box,
+    state: &mut AppState,
+    cur_cores: &HashMap<usize, procstat::CpuTimes>,
+    cpu_usage: f32,
+    cpu_watts: Option<f64>,
+) {
     clear_box(container);
 
-    let (overall, cores) = procstat::read_cpu_times();
-    let usage = procstat::usage_pct(&state.prev_cpu_overall, &overall);
     let model = procstat::read_cpu_model();
     let freq = procstat::read_cpu_freq_mhz();
     let (temps, _) = hwmon::read_all_temps_and_fans();
@@ -439,12 +444,13 @@ fn refresh_cpu_page(container: &gtk::Box, state: &mut AppState) {
     header_row.append(&model_box);
 
     header_row.set_spacing(24);
-    header_row.append(&stat_row("Uso médio", &stat_label(&format!("{usage:.0}%"), "stat-blue")));
+    header_row.append(&stat_row("Uso médio", &stat_label(&format!("{cpu_usage:.0}%"), "stat-blue")));
     header_row.append(&stat_row("Temp", &stat_label(&pkg_temp.map(|t| format!("{t:.0}°C")).unwrap_or_else(|| "—".into()), "stat-green")));
     header_row.append(&stat_row("Freq", &stat_label(&format!("{freq} MHz"), "stat-gray")));
+    header_row.append(&stat_row("Consumo", &stat_label(&cpu_watts.map(|w| format!("{w:.1} W")).unwrap_or_else(|| "—".into()), "stat-orange")));
     inner.append(&header_row);
 
-    state.cpu_page_hist.push_back(usage);
+    state.cpu_page_hist.push_back(cpu_usage);
     if state.cpu_page_hist.len() > HISTORY_LEN {
         state.cpu_page_hist.pop_front();
     }
@@ -459,10 +465,10 @@ fn refresh_cpu_page(container: &gtk::Box, state: &mut AppState) {
     flow.set_row_spacing(6);
     flow.set_column_spacing(6);
 
-    let mut core_ids: Vec<usize> = cores.keys().copied().collect();
+    let mut core_ids: Vec<usize> = cur_cores.keys().copied().collect();
     core_ids.sort();
     for id in core_ids {
-        let cur = cores[&id];
+        let cur = cur_cores[&id];
         let prev = state.prev_cpu_cores.get(&id).copied().unwrap_or_default();
         let pct = procstat::usage_pct(&prev, &cur);
         let core_temp = core_temp_map.get(id).copied().flatten();
@@ -476,8 +482,6 @@ fn refresh_cpu_page(container: &gtk::Box, state: &mut AppState) {
         cell.append(&pct_lbl);
         cell.append(&id_lbl);
 
-        // Barra de temperatura: pequena faixa colorida no rodapé da célula, igual ao
-        // indicador laranja/verde da v2.0 (verde = frio, laranja/vermelho = quente).
         let temp_bar = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         temp_bar.set_size_request(-1, 3);
         temp_bar.set_margin_top(4);
@@ -492,9 +496,6 @@ fn refresh_cpu_page(container: &gtk::Box, state: &mut AppState) {
     }
     inner.append(&flow);
     container.append(&inner);
-
-    state.prev_cpu_overall = overall;
-    state.prev_cpu_cores = cores;
 }
 
 // --- página: Fans ---
@@ -874,7 +875,7 @@ fn main() -> glib::ExitCode {
     let app = adw::Application::builder().application_id("com.machctrl.app").build();
 
     app.connect_activate(|app| {
-        adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceLight);
+        adw::StyleManager::default().set_color_scheme(adw::ColorScheme::PreferLight);
 
         let display = gtk::gdk::Display::default().expect("sem display");
 
@@ -889,7 +890,7 @@ fn main() -> glib::ExitCode {
         }
 
         let provider = gtk::CssProvider::new();
-        provider.load_from_path("src/style.css");
+        provider.load_from_data(include_str!("style.css").as_bytes());
         gtk::style_context_add_provider_for_display(
             &display,
             &provider,
@@ -972,8 +973,19 @@ fn main() -> glib::ExitCode {
         let stack_for_loop = stack.clone();
         glib::source::timeout_add_seconds_local(1, move || {
             let mut st = state.borrow_mut();
-            refresh_overview(&overview_w, &mut st);
-            refresh_cpu_page(&cpu_container, &mut st);
+
+            // Leitura única por tick: CPU e RAPL são contadores acumulados — duas leituras
+            // no mesmo tick dariam delta quase zero, tornando os percentuais incorretos.
+            let (cur_cpu, cur_cores) = procstat::read_cpu_times();
+            let cpu_usage = procstat::usage_pct(&st.prev_cpu_overall, &cur_cpu);
+            let cpu_watts = st.rapl.read_watts();
+
+            refresh_overview(&overview_w, &mut st, cpu_usage, cpu_watts);
+            refresh_cpu_page(&cpu_container, &mut st, &cur_cores, cpu_usage, cpu_watts);
+
+            st.prev_cpu_overall = cur_cpu;
+            st.prev_cpu_cores = cur_cores;
+
             if stack_for_loop.visible_child_name().as_deref() == Some("fans") {
                 refresh_fans_page(&fans_container);
             }

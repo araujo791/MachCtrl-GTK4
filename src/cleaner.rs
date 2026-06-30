@@ -2,12 +2,11 @@
 // (backend/machctrl_server.py linhas 660-877)
 
 use glob::glob;
-use serde::Serialize;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-#[derive(Serialize, Clone)]
+#[derive(Clone)]
 pub struct CleanTask {
     pub id: String,
     pub label: String,
@@ -15,7 +14,6 @@ pub struct CleanTask {
     pub needs_root: bool,
 }
 
-#[derive(Serialize)]
 pub struct CleanResult {
     pub success: bool,
     pub result: String,
@@ -267,14 +265,8 @@ pub fn run_clean_task(task_id: &str) -> CleanResult {
 }
 
 /// Extrai algo como "1.2GB" da saída do `docker system prune` e converte pra bytes.
+/// Parsing manual sem a crate `regex`: procura número seguido de unidade (B, kB, MB, GB).
 fn parse_docker_size(line: &str) -> Option<u64> {
-    let re = regex_lite_find(line)?;
-    Some(re)
-}
-
-fn regex_lite_find(line: &str) -> Option<u64> {
-    // parsing manual simples (sem trazer a crate `regex` só por isso): procura um número
-    // seguido de unidade (B, kB, MB, GB) na linha.
     let units = [("GB", 1_073_741_824f64), ("MB", 1_048_576f64), ("kB", 1024f64), ("B", 1f64)];
     for (unit, mult) in units {
         if let Some(pos) = line.find(unit) {

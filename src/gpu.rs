@@ -1,11 +1,9 @@
 // Port de get_gpu_info / nvidia_get_fan_info / nvidia_set_fan_speed / nvidia_set_fan_auto
 // (backend/machctrl_server.py linhas 395-528)
 
-use serde::Serialize;
 use std::process::Command;
-use std::time::Duration;
 
-#[derive(Serialize, Clone, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct GpuInfo {
     pub vendor: String, // "amd" | "nvidia"
     pub index: i32,
@@ -210,9 +208,5 @@ pub fn nvidia_set_fan_auto(gpu_index: i32) -> Result<(), String> {
 }
 
 fn run_with_timeout(cmd: &str, args: &[&str]) -> Result<std::process::Output, String> {
-    // std::process::Command não tem timeout nativo; nvidia-smi normalmente responde em
-    // milissegundos, então mantemos simples aqui. Se necessário, trocar por `wait_timeout`
-    // (crate `wait-timeout`) para paridade exata com o timeout=3s do Python.
-    let _ = Duration::from_secs(3);
     Command::new(cmd).args(args).output().map_err(|e| e.to_string())
 }
