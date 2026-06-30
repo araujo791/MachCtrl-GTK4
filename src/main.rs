@@ -192,6 +192,7 @@ struct OverviewWidgets {
     gpu_card: gtk::Box,
     disk_card: gtk::Box,
     net_card: gtk::Box,
+    proc_card: gtk::Box,
     cpu_spark: gtk::DrawingArea,
     cpu_hist: Rc<RefCell<VecDeque<f32>>>,
     ram_spark: gtk::DrawingArea,
@@ -258,6 +259,10 @@ fn build_overview_page() -> (gtk::Box, OverviewWidgets) {
 
     page.append(&grid2);
 
+    let proc_inner = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    let proc_card_wrap = card(&proc_inner);
+    page.append(&proc_card_wrap);
+
     (
         page,
         OverviewWidgets {
@@ -269,6 +274,7 @@ fn build_overview_page() -> (gtk::Box, OverviewWidgets) {
             gpu_card: gpu_inner,
             disk_card: disk_inner,
             net_card: net_inner,
+            proc_card: proc_inner,
             cpu_spark,
             cpu_hist,
             ram_spark,
@@ -369,6 +375,27 @@ fn refresh_overview(w: &OverviewWidgets, state: &mut AppState) {
         w.net_card.append(&row);
     }
     state.prev_net = current_net;
+
+    clear_box(&w.proc_card);
+    let ptitle = gtk::Label::new(Some("TOP PROCESSOS (RAM)"));
+    ptitle.add_css_class("card-title");
+    ptitle.set_halign(gtk::Align::Start);
+    w.proc_card.append(&ptitle);
+    for (i, p) in procstat::top_processes_by_ram(10).into_iter().enumerate() {
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let rank = gtk::Label::new(Some(&format!("{}", i + 1)));
+        rank.add_css_class("stat-gray");
+        rank.set_width_chars(2);
+        row.append(&rank);
+        let name = gtk::Label::new(Some(&p.name));
+        name.set_halign(gtk::Align::Start);
+        name.set_hexpand(true);
+        name.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        row.append(&name);
+        let mb = p.rss_kb as f64 / 1024.0;
+        row.append(&stat_label(&format!("{mb:.0} MB"), "stat-blue"));
+        w.proc_card.append(&row);
+    }
 }
 
 // --- página: CPU (grid de núcleos) ---
@@ -555,6 +582,50 @@ fn refresh_fans_page(container: &gtk::Box) {
     hint.set_wrap(true);
     hint.set_margin_top(8);
     container.append(&hint);
+}
+
+// --- página: Discos ---
+
+fn build_disks_page() -> gtk::Box {
+    let page = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    page.set_margin_end(28);
+
+    let disks = procstat::read_disks();
+    if disks.is_empty() {
+        page.append(&build_placeholder_page("Discos", "Nenhuma partição detectada via df."));
+        return page;
+    }
+
+    for d in disks {
+        let row = gtk::Box::new(gtk::Orientation::Vertical, 8);
+        row.add_css_class("card");
+
+        let top = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        let left = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        let title = gtk::Label::new(Some(&d.mountpoint));
+        title.add_css_class("card-title");
+        title.set_halign(gtk::Align::Start);
+        left.append(&title);
+        let fstype_lbl = gtk::Label::new(Some(&d.fstype));
+        fstype_lbl.add_css_class("stat-gray");
+        fstype_lbl.set_halign(gtk::Align::Start);
+        left.append(&fstype_lbl);
+        left.set_hexpand(true);
+        top.append(&left);
+
+        top.append(&stat_row("Uso", &stat_label(&format!("{:.0}%", d.usage_pct), "stat-blue")));
+        top.append(&stat_row("Livre", &stat_label(&format!("{:.1} GB", d.free_gb), "stat-gray")));
+        top.append(&stat_row("Total", &stat_label(&format!("{:.1} GB", d.total_gb), "stat-gray")));
+        row.append(&top);
+
+        let bar = gtk::ProgressBar::new();
+        bar.set_fraction((d.usage_pct / 100.0).clamp(0.0, 1.0));
+        bar.add_css_class("disk-bar");
+        row.append(&bar);
+
+        page.append(&row);
+    }
+    page
 }
 
 // --- página: Memória ---
@@ -861,7 +932,7 @@ fn main() -> glib::ExitCode {
         stack.add_named(&cpu_page, Some("cpu"));
 
         stack.add_named(&build_memory_page(), Some("memory"));
-        stack.add_named(&build_placeholder_page("Discos", "Detalhamento por partição — em construção."), Some("disks"));
+        stack.add_named(&build_disks_page(), Some("disks"));
         let (fans_page, fans_container) = build_fans_page();
         refresh_fans_page(&fans_container);
         stack.add_named(&fans_page, Some("fans"));

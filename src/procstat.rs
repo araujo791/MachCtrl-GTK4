@@ -178,7 +178,13 @@ pub fn read_disks() -> Vec<DiskInfo> {
                 return None;
             }
             let fstype = f[1].to_string();
-            if matches!(fstype.as_str(), "tmpfs" | "devtmpfs" | "squashfs" | "overlay" | "proc" | "sysfs" | "cgroup2") {
+            if matches!(fstype.as_str(), "tmpfs" | "devtmpfs" | "squashfs" | "overlay" | "proc" | "sysfs" | "cgroup2")
+                || fstype.starts_with("fuse")
+                || fstype == "nfs"
+                || fstype == "nfs4"
+                || fstype == "cifs"
+                || fstype == "autofs"
+            {
                 return None;
             }
             let total_b: f64 = f[2].parse().ok()?;
@@ -225,6 +231,63 @@ pub fn read_net_counters() -> Vec<NetAdapter> {
         })
         .collect()
 }
+
+#[derive(Clone)]
+pub struct ProcInfo {
+    pub pid: u32,
+    pub name: String,
+    pub rss_kb: u64,
+    pub cpu_ticks: u64, // utime + stime acumulados, usado para delta de uso de CPU
+}
+
+fn read_proc_stat_fields(pid: u32) -> Option<(String, u64)> {
+    let content = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    // O nome do processo vem entre parênteses e pode conter espaços/parênteses,
+    // então localizamos pelo último ')' antes de seguir com os campos numéricos.
+    let close_paren = content.rfind(')')?;
+    let name = content[content.find('(')? + 1..close_paren].to_string();
+    let rest: Vec<&str> = content[close_paren + 2..].split_whitespace().collect();
+    // utime é campo 14, stime é campo 15 (1-indexed a partir do 3º campo já consumido,
+    // ou seja índices 11 e 12 no vetor `rest` que começa no campo 3 do /proc/pid/stat).
+    let utime: u64 = rest.get(11)?.parse().ok()?;
+    let stime: u64 = rest.get(12)?.parse().ok()?;
+    Some((name, utime + stime))
+}
+
+fn read_proc_rss_kb(pid: u32) -> Option<u64> {
+    let content = fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+    content
+        .lines()
+        .find(|l| l.starts_with("VmRSS:"))
+        .and_then(|l| l.split_whitespace().nth(1))
+        .and_then(|s| s.parse().ok())
+}
+
+/// Lista todos os processos do sistema com nome, RSS (memória residente) e ticks de CPU
+/// acumulados. O chamador é responsável por calcular deltas de CPU entre duas leituras
+/// (ver `top_processes_by_cpu`) já que ticks são contadores acumulados desde o boot do processo.
+pub fn read_all_processes() -> Vec<ProcInfo> {
+    let Ok(entries) = fs::read_dir("/proc") else {
+        return Vec::new();
+    };
+    entries
+        .filter_map(|e| e.ok())
+        .filter_map(|e| e.file_name().to_str()?.parse::<u32>().ok())
+        .filter_map(|pid| {
+            let (name, cpu_ticks) = read_proc_stat_fields(pid)?;
+            let rss_kb = read_proc_rss_kb(pid).unwrap_or(0);
+            Some(ProcInfo { pid, name, rss_kb, cpu_ticks })
+        })
+        .collect()
+}
+
+pub fn top_processes_by_ram(n: usize) -> Vec<ProcInfo> {
+    let mut procs = read_all_processes();
+    procs.sort_by(|a, b| b.rss_kb.cmp(&a.rss_kb));
+    procs.truncate(n);
+    procs
+}
+
 
 pub fn read_hostname() -> String {
     fs::read_to_string("/proc/sys/kernel/hostname").map(|s| s.trim().to_string()).unwrap_or_default()
