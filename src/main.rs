@@ -470,6 +470,93 @@ fn refresh_cpu_page(container: &gtk::Box, state: &mut AppState) {
     state.prev_cpu_cores = cores;
 }
 
+// --- página: Fans ---
+
+fn build_fans_page() -> (gtk::Box, gtk::Box) {
+    let page = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    page.set_margin_end(28);
+    let container = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    page.append(&container);
+    (page, container)
+}
+
+fn refresh_fans_page(container: &gtk::Box) {
+    clear_box(container);
+
+    let (_, fans) = hwmon::read_all_temps_and_fans();
+
+    if fans.is_empty() {
+        let empty = build_placeholder_page(
+            "Nenhum fan detectado",
+            "Não foi possível ler sensores de fan via /sys/class/hwmon neste sistema.",
+        );
+        container.append(&empty);
+        return;
+    }
+
+    for fan in fans {
+        let row = gtk::Box::new(gtk::Orientation::Vertical, 8);
+        row.add_css_class("card");
+
+        let top = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        let left = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        let title = gtk::Label::new(Some(&fan.label));
+        title.add_css_class("card-title");
+        title.set_halign(gtk::Align::Start);
+        left.append(&title);
+        let chip_lbl = gtk::Label::new(Some(&fan.chip));
+        chip_lbl.add_css_class("stat-gray");
+        chip_lbl.set_halign(gtk::Align::Start);
+        left.append(&chip_lbl);
+        left.set_hexpand(true);
+        top.append(&left);
+
+        top.append(&stat_row("RPM", &stat_label(&format!("{}", fan.rpm), "stat-blue")));
+        top.append(&stat_row("PWM", &stat_label(&format!("{}%", fan.pct), "stat-gray")));
+        row.append(&top);
+
+        if let Some(pwm_enable_path) = fan.pwm_enable_path.clone() {
+            let controls = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+
+            let slider = gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.0, 100.0, 1.0);
+            slider.set_value(fan.pct as f64);
+            slider.set_hexpand(true);
+            slider.set_draw_value(true);
+
+            let pwm_path = fan.pwm_path.clone();
+            let pwm_enable_path_for_slider = pwm_enable_path.clone();
+            slider.connect_value_changed(move |s| {
+                let speed = s.value().round() as i32;
+                let _ = hwmon::set_fan_speed(&pwm_path, Some(&pwm_enable_path_for_slider), speed);
+            });
+            controls.append(&slider);
+
+            let auto_btn = gtk::Button::with_label("Auto");
+            auto_btn.add_css_class("run-btn");
+            let pwm_enable_path_for_auto = pwm_enable_path.clone();
+            auto_btn.connect_clicked(move |_| {
+                let _ = hwmon::set_fan_auto(&pwm_enable_path_for_auto);
+            });
+            controls.append(&auto_btn);
+
+            row.append(&controls);
+        } else {
+            let note = gtk::Label::new(Some("Somente leitura (sem controle PWM neste sensor)."));
+            note.add_css_class("stat-gray");
+            note.set_halign(gtk::Align::Start);
+            row.append(&note);
+        }
+
+        container.append(&row);
+    }
+
+    let hint = gtk::Label::new(Some("Controle de fans requer privilégios de root (escrita em /sys). Rode o app com sudo/pkexec se os sliders não tiverem efeito."));
+    hint.add_css_class("stat-gray");
+    hint.set_wrap(true);
+    hint.set_margin_top(8);
+    container.append(&hint);
+}
+
 // --- página: Memória ---
 
 fn build_memory_page() -> gtk::Box {
@@ -775,7 +862,9 @@ fn main() -> glib::ExitCode {
 
         stack.add_named(&build_memory_page(), Some("memory"));
         stack.add_named(&build_placeholder_page("Discos", "Detalhamento por partição — em construção."), Some("disks"));
-        stack.add_named(&build_placeholder_page("Fans", "Controle de curva de fan — em construção."), Some("fans"));
+        let (fans_page, fans_container) = build_fans_page();
+        refresh_fans_page(&fans_container);
+        stack.add_named(&fans_page, Some("fans"));
         stack.add_named(&build_energy_page(), Some("energy"));
         stack.add_named(&build_cleaner_page(), Some("cleaner"));
         stack.add_named(&build_placeholder_page("Benchmark", "Testes de CPU/Memória — em construção."), Some("benchmark"));
@@ -809,10 +898,14 @@ fn main() -> glib::ExitCode {
 
         // --- loop de atualização (1s, igual ao resto do projeto) ---
         let state = Rc::new(RefCell::new(AppState::new()));
+        let stack_for_loop = stack.clone();
         glib::source::timeout_add_seconds_local(1, move || {
             let mut st = state.borrow_mut();
             refresh_overview(&overview_w, &mut st);
             refresh_cpu_page(&cpu_container, &mut st);
+            if stack_for_loop.visible_child_name().as_deref() == Some("fans") {
+                refresh_fans_page(&fans_container);
+            }
             glib::ControlFlow::Continue
         });
     });
