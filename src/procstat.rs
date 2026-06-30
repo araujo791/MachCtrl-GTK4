@@ -293,8 +293,15 @@ pub fn read_hostname() -> String {
     fs::read_to_string("/proc/sys/kernel/hostname").map(|s| s.trim().to_string()).unwrap_or_default()
 }
 
-pub fn read_kernel_version() -> String {
-    fs::read_to_string("/proc/sys/kernel/osrelease").map(|s| s.trim().to_string()).unwrap_or_default()
+pub fn read_distro_name() -> String {
+    fs::read_to_string("/etc/os-release")
+        .ok()
+        .and_then(|s| {
+            s.lines()
+                .find(|l| l.starts_with("PRETTY_NAME="))
+                .map(|l| l["PRETTY_NAME=".len()..].trim_matches('"').to_string())
+        })
+        .unwrap_or_else(|| "Linux".to_string())
 }
 
 pub fn read_uptime_human() -> String {

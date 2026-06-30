@@ -1,14 +1,12 @@
 // Port de get_available_profiles / get_current_profile / _apply_profile_sync
 // (backend/machctrl_server.py linhas 1236-1314, 1422-1441)
 
-use serde::Serialize;
 use std::fs;
 use std::path::Path;
 
 const CPU0_CPUFREQ: &str = "/sys/devices/system/cpu/cpu0/cpufreq";
 const PSTATE_BASE: &str = "/sys/devices/system/cpu/intel_pstate";
 
-#[derive(Serialize)]
 pub struct ProfilesInfo {
     pub available_profiles: Vec<String>,
     pub current_profile: String,

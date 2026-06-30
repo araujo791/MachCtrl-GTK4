@@ -53,7 +53,6 @@ impl RaplReader {
         }
     }
 
-    #[allow(dead_code)] // útil para diagnóstico futuro (ex: exibir "RAPL indisponível" na UI)
     pub fn available(&self) -> bool {
         self.energy_path.is_some()
     }

@@ -1,7 +1,6 @@
 // Port de find_hwmon_devices / find_temp_sensors / find_fan_sensors / find_all_pwm /
 // read_sensor_file / set_fan_speed / set_fan_auto (backend/machctrl_server.py linhas 43-130, 1166-1235)
 
-use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -10,14 +9,14 @@ use std::time::Duration;
 
 const HWMON_BASE: &str = "/sys/class/hwmon";
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct TempSensor {
     pub label: String,
     pub value_c: f64,
     pub chip: String,
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct FanSensor {
     pub id: String,
     pub label: String,

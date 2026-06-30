@@ -1,15 +1,13 @@
 // Port de _parse_dmidecode_blocks / get_memory_info (parte de slots)
 // (backend/machctrl_server.py linhas 278-376)
 
-use serde::Serialize;
 use std::process::Command;
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct MemorySlot {
     pub locator: String,
     pub bank: String,
     pub size_gb: f64,
-    #[serde(rename = "type")]
     pub mem_type: String,
     pub speed_mhz: i64,
     pub configured_speed_mhz: i64,
@@ -20,7 +18,7 @@ pub struct MemorySlot {
     pub rank: i64,
 }
 
-#[derive(Serialize, Clone, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct MemorySlotsInfo {
     pub slots: Vec<MemorySlot>,
     pub total_slots: u32,
