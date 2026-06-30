@@ -264,6 +264,23 @@ fn stat_label(text: &str, css: &str) -> gtk::Label {
     l
 }
 
+/// Bloco de métrica vertical (rótulo pequeno em cima, valor grande embaixo), alinhado
+/// à direita — padrão usado nos headers de CPU/Fans/Discos pra um visual limpo estilo Sensei.
+fn stat_block(label: &str, value: &str, value_css: &str) -> gtk::Box {
+    let b = gtk::Box::new(gtk::Orientation::Vertical, 1);
+    b.set_halign(gtk::Align::End);
+    let l = gtk::Label::new(Some(label));
+    l.add_css_class("stat-caption");
+    l.set_halign(gtk::Align::End);
+    let v = gtk::Label::new(Some(value));
+    v.add_css_class(value_css);
+    v.add_css_class("stat-value");
+    v.set_halign(gtk::Align::End);
+    b.append(&l);
+    b.append(&v);
+    b
+}
+
 fn page_header(title: &str, subtitle_box: &gtk::Box) -> gtk::Box {
     let header = gtk::Box::new(gtk::Orientation::Vertical, 2);
     header.set_margin_top(24);
@@ -312,7 +329,9 @@ struct OverviewWidgets {
 
 fn build_overview_page() -> (gtk::Box, OverviewWidgets) {
     let page = gtk::Box::new(gtk::Orientation::Vertical, 16);
+    page.set_margin_start(28);
     page.set_margin_end(28);
+    page.set_margin_top(4);
 
     let grid = gtk::Box::new(gtk::Orientation::Horizontal, 16);
     grid.set_homogeneous(true);
@@ -510,7 +529,9 @@ fn refresh_overview(w: &OverviewWidgets, state: &mut AppState, cpu_usage: f32, c
 
 fn build_cpu_page() -> (gtk::Box, gtk::Box) {
     let page = gtk::Box::new(gtk::Orientation::Vertical, 16);
+    page.set_margin_start(28);
     page.set_margin_end(28);
+    page.set_margin_top(4);
     let container = gtk::Box::new(gtk::Orientation::Vertical, 16);
     page.append(&container);
     (page, container)
@@ -521,7 +542,6 @@ fn refresh_cpu_page(
     state: &mut AppState,
     cur_cores: &HashMap<usize, procstat::CpuTimes>,
     cpu_usage: f32,
-    cpu_watts: Option<f64>,
 ) {
     clear_box(container);
 
@@ -590,13 +610,12 @@ fn refresh_cpu_page(
         info_box.append(&sub_lbl);
         header_row.append(&info_box);
 
-        let stats_box = gtk::Box::new(gtk::Orientation::Horizontal, 24);
-        stats_box.append(&stat_row("Uso médio", &stat_label(&format!("{socket_usage:.0}%"), "stat-blue")));
-        stats_box.append(&stat_row("Package", &stat_label(
-            &pkg_temp.map(|t| format!("{t:.0}°C")).unwrap_or_else(|| "—".into()), "stat-green")));
-        stats_box.append(&stat_row("Freq", &stat_label(&format!("{:.2} GHz", socket.freq_mhz as f64 / 1000.0), "stat-gray")));
-        stats_box.append(&stat_row("Consumo", &stat_label(
-            &cpu_watts.map(|w| format!("{w:.1} W")).unwrap_or_else(|| "—".into()), "stat-orange")));
+        let stats_box = gtk::Box::new(gtk::Orientation::Horizontal, 32);
+        stats_box.set_valign(gtk::Align::Center);
+        stats_box.append(&stat_block("USO MÉDIO", &format!("{socket_usage:.0}%"), "stat-blue"));
+        stats_box.append(&stat_block("PACKAGE",
+            &pkg_temp.map(|t| format!("{t:.0}°C")).unwrap_or_else(|| "—".into()), "stat-green"));
+        stats_box.append(&stat_block("FREQ", &format!("{:.2} GHz", socket.freq_mhz as f64 / 1000.0), "stat-gray"));
         header_row.append(&stats_box);
         socket_card.append(&header_row);
 
@@ -651,7 +670,9 @@ fn refresh_cpu_page(
 
 fn build_fans_page() -> (gtk::Box, gtk::Box) {
     let page = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    page.set_margin_start(28);
     page.set_margin_end(28);
+    page.set_margin_top(4);
     let container = gtk::Box::new(gtk::Orientation::Vertical, 12);
     page.append(&container);
     (page, container)
@@ -688,8 +709,11 @@ fn refresh_fans_page(container: &gtk::Box) {
         left.set_hexpand(true);
         top.append(&left);
 
-        top.append(&stat_row("RPM", &stat_label(&format!("{}", fan.rpm), "stat-blue")));
-        top.append(&stat_row("PWM", &stat_label(&format!("{}%", fan.pct), "stat-gray")));
+        let fan_stats = gtk::Box::new(gtk::Orientation::Horizontal, 28);
+        fan_stats.set_valign(gtk::Align::Center);
+        fan_stats.append(&stat_block("RPM", &format!("{}", fan.rpm), "stat-blue"));
+        fan_stats.append(&stat_block("PWM", &format!("{}%", fan.pct), "stat-gray"));
+        top.append(&fan_stats);
         row.append(&top);
 
         if let Some(pwm_enable_path) = fan.pwm_enable_path.clone() {
@@ -738,7 +762,9 @@ fn refresh_fans_page(container: &gtk::Box) {
 
 fn build_disks_page() -> gtk::Box {
     let page = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    page.set_margin_start(28);
     page.set_margin_end(28);
+    page.set_margin_top(4);
 
     let disks = procstat::read_disks();
     if disks.is_empty() {
@@ -763,9 +789,12 @@ fn build_disks_page() -> gtk::Box {
         left.set_hexpand(true);
         top.append(&left);
 
-        top.append(&stat_row("Uso", &stat_label(&format!("{:.0}%", d.usage_pct), "stat-blue")));
-        top.append(&stat_row("Livre", &stat_label(&format!("{:.1} GB", d.free_gb), "stat-gray")));
-        top.append(&stat_row("Total", &stat_label(&format!("{:.1} GB", d.total_gb), "stat-gray")));
+        let disk_stats = gtk::Box::new(gtk::Orientation::Horizontal, 28);
+        disk_stats.set_valign(gtk::Align::Center);
+        disk_stats.append(&stat_block("USO", &format!("{:.0}%", d.usage_pct), "stat-blue"));
+        disk_stats.append(&stat_block("LIVRE", &format!("{:.1} GB", d.free_gb), "stat-gray"));
+        disk_stats.append(&stat_block("TOTAL", &format!("{:.1} GB", d.total_gb), "stat-gray"));
+        top.append(&disk_stats);
         row.append(&top);
 
         let bar = gtk::ProgressBar::new();
@@ -782,7 +811,9 @@ fn build_disks_page() -> gtk::Box {
 
 fn build_memory_page() -> gtk::Box {
     let page = gtk::Box::new(gtk::Orientation::Vertical, 16);
+    page.set_margin_start(28);
     page.set_margin_end(28);
+    page.set_margin_top(4);
 
     let mem = procstat::read_meminfo();
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 24);
@@ -835,7 +866,9 @@ fn build_memory_page() -> gtk::Box {
 
 fn build_energy_page() -> gtk::Box {
     let page = gtk::Box::new(gtk::Orientation::Vertical, 16);
+    page.set_margin_start(28);
     page.set_margin_end(28);
+    page.set_margin_top(4);
 
     let info = profiles::get_profiles_info();
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
@@ -895,7 +928,9 @@ fn build_energy_page() -> gtk::Box {
 
 fn build_cleaner_page() -> gtk::Box {
     let page = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    page.set_margin_start(28);
     page.set_margin_end(28);
+    page.set_margin_top(4);
 
     for task in cleaner::get_available_clean_tasks() {
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
@@ -1130,7 +1165,7 @@ fn main() -> glib::ExitCode {
             let cpu_watts = st.rapl.read_watts();
 
             refresh_overview(&overview_w, &mut st, cpu_usage, cpu_watts);
-            refresh_cpu_page(&cpu_container, &mut st, &cur_cores, cpu_usage, cpu_watts);
+            refresh_cpu_page(&cpu_container, &mut st, &cur_cores, cpu_usage);
 
             st.prev_cpu_overall = cur_cpu;
             st.prev_cpu_cores = cur_cores;
