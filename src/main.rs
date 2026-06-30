@@ -9,7 +9,10 @@ mod profiles;
 use adw::prelude::*;
 use gtk::glib;
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::rc::Rc;
+
+const HISTORY_LEN: usize = 40;
 
 const APP_NAME: &str = "MachCtrl";
 const APP_VERSION: &str = "v0.1 (Rust nativo)";
@@ -21,6 +24,7 @@ struct AppState {
     prev_cpu_cores: std::collections::HashMap<usize, procstat::CpuTimes>,
     rapl: power::RaplReader,
     prev_net: Vec<procstat::NetAdapter>,
+    cpu_page_hist: VecDeque<f32>,
 }
 
 impl AppState {
@@ -31,7 +35,99 @@ impl AppState {
             prev_cpu_cores: cores,
             rapl: power::RaplReader::new(),
             prev_net: procstat::read_net_counters(),
+            cpu_page_hist: VecDeque::new(),
         }
+    }
+}
+
+fn push_history(h: &Rc<RefCell<VecDeque<f32>>>, v: f32) {
+    let mut h = h.borrow_mut();
+    h.push_back(v);
+    if h.len() > HISTORY_LEN {
+        h.pop_front();
+    }
+}
+
+/// Gráfico de linha (sparkline) vivo: lê de um buffer compartilhado, então quem atualiza
+/// os dados precisa chamar `.queue_draw()` na DrawingArea retornada pra redesenhar.
+fn build_sparkline(history: Rc<RefCell<VecDeque<f32>>>, rgb: (f64, f64, f64)) -> gtk::DrawingArea {
+    let da = gtk::DrawingArea::new();
+    da.set_content_height(44);
+    da.set_hexpand(true);
+    da.set_draw_func(move |_, cr, w, h| {
+        let data = history.borrow();
+        if data.len() < 2 {
+            return;
+        }
+        let w = w as f64;
+        let h = h as f64;
+        let n = data.len();
+        let step = w / (n as f64 - 1.0);
+        let y_of = |v: f32| h - ((v as f64 / 100.0).clamp(0.0, 1.0) * (h - 2.0)) - 1.0;
+
+        cr.move_to(0.0, y_of(data[0]));
+        for (i, v) in data.iter().enumerate().skip(1) {
+            cr.line_to(i as f64 * step, y_of(*v));
+        }
+        cr.set_line_width(2.0);
+        cr.set_source_rgba(rgb.0, rgb.1, rgb.2, 1.0);
+        let _ = cr.stroke_preserve();
+
+        cr.line_to(w, h);
+        cr.line_to(0.0, h);
+        cr.close_path();
+        cr.set_source_rgba(rgb.0, rgb.1, rgb.2, 0.12);
+        let _ = cr.fill();
+    });
+    da
+}
+
+/// Versão "estática": usada em páginas que são reconstruídas do zero a cada tick (como a
+/// de CPU), onde não vale a pena montar um buffer compartilhado — os dados já vêm prontos.
+fn build_sparkline_snapshot(data: Vec<f32>, rgb: (f64, f64, f64)) -> gtk::DrawingArea {
+    let history = Rc::new(RefCell::new(VecDeque::from(data)));
+    build_sparkline(history, rgb)
+}
+
+/// Tenta mapear temperaturas "Core N" (coretemp/k10temp) para cada CPU lógico, assumindo
+/// hyperthreading/SMT uniforme (threads_per_core = núcleos lógicos / núcleos físicos com
+/// sensor). Aproximação razoável já que /proc não expõe essa topologia diretamente.
+fn build_core_temp_map(temps: &[hwmon::TempSensor], core_count: usize) -> Vec<Option<f64>> {
+    let mut core_temps: Vec<(usize, f64)> = temps
+        .iter()
+        .filter_map(|t| {
+            t.label
+                .to_lowercase()
+                .strip_prefix("core ")
+                .and_then(|n| n.trim().parse::<usize>().ok())
+                .map(|n| (n, t.value_c))
+        })
+        .collect();
+    core_temps.sort_by_key(|(n, _)| *n);
+
+    let mut map = vec![None; core_count];
+    if core_temps.is_empty() {
+        return map;
+    }
+    let threads_per_core = (core_count / core_temps.len()).max(1);
+    for (phys_idx, temp) in &core_temps {
+        for t in 0..threads_per_core {
+            let logical = phys_idx * threads_per_core + t;
+            if logical < core_count {
+                map[logical] = Some(*temp);
+            }
+        }
+    }
+    map
+}
+
+fn temp_css_class(temp_c: f64) -> &'static str {
+    if temp_c >= 80.0 {
+        "temp-hot"
+    } else if temp_c >= 60.0 {
+        "temp-warm"
+    } else {
+        "temp-cool"
     }
 }
 
@@ -96,6 +192,12 @@ struct OverviewWidgets {
     gpu_card: gtk::Box,
     disk_card: gtk::Box,
     net_card: gtk::Box,
+    cpu_spark: gtk::DrawingArea,
+    cpu_hist: Rc<RefCell<VecDeque<f32>>>,
+    ram_spark: gtk::DrawingArea,
+    ram_hist: Rc<RefCell<VecDeque<f32>>>,
+    gpu_spark: gtk::DrawingArea,
+    gpu_hist: Rc<RefCell<VecDeque<f32>>>,
 }
 
 fn build_overview_page() -> (gtk::Box, OverviewWidgets) {
@@ -117,6 +219,9 @@ fn build_overview_page() -> (gtk::Box, OverviewWidgets) {
     cpu_inner.append(&stat_row("Uso médio", &cpu_usage));
     cpu_inner.append(&stat_row("Temperatura", &cpu_temp));
     cpu_inner.append(&stat_row("Frequência", &cpu_freq));
+    let cpu_hist = Rc::new(RefCell::new(VecDeque::new()));
+    let cpu_spark = build_sparkline(cpu_hist.clone(), (0.145, 0.388, 0.922));
+    cpu_inner.append(&cpu_spark);
     grid.append(&card(&cpu_inner));
 
     // RAM card
@@ -129,10 +234,15 @@ fn build_overview_page() -> (gtk::Box, OverviewWidgets) {
     let ram_used = stat_label("—", "stat-gray");
     ram_inner.append(&stat_row("Uso", &ram_pct));
     ram_inner.append(&stat_row("Em uso / Total", &ram_used));
+    let ram_hist = Rc::new(RefCell::new(VecDeque::new()));
+    let ram_spark = build_sparkline(ram_hist.clone(), (0.086, 0.639, 0.290));
+    ram_inner.append(&ram_spark);
     grid.append(&card(&ram_inner));
 
     // GPU card (conteúdo populado no refresh, pois depende do vendor detectado)
     let gpu_inner = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    let gpu_hist = Rc::new(RefCell::new(VecDeque::new()));
+    let gpu_spark = build_sparkline(gpu_hist.clone(), (0.749, 0.353, 0.949));
     grid.append(&card(&gpu_inner));
 
     page.append(&grid);
@@ -159,6 +269,12 @@ fn build_overview_page() -> (gtk::Box, OverviewWidgets) {
             gpu_card: gpu_inner,
             disk_card: disk_inner,
             net_card: net_inner,
+            cpu_spark,
+            cpu_hist,
+            ram_spark,
+            ram_hist,
+            gpu_spark,
+            gpu_hist,
         },
     )
 }
@@ -180,6 +296,10 @@ fn refresh_overview(w: &OverviewWidgets, state: &mut AppState) {
     state.prev_cpu_cores = cores;
     w.cpu_usage.set_text(&format!("{usage:.0}%"));
     w.cpu_freq.set_text(&format!("{} MHz", procstat::read_cpu_freq_mhz()));
+    push_history(&w.cpu_hist, usage);
+    w.cpu_spark.queue_draw();
+    push_history(&w.ram_hist, mem.usage_pct as f32);
+    w.ram_spark.queue_draw();
 
     let (temps, fans) = hwmon::read_all_temps_and_fans();
     let cpu_temp = temps
@@ -208,6 +328,9 @@ fn refresh_overview(w: &OverviewWidgets, state: &mut AppState) {
     } else {
         w.gpu_card.append(&gtk::Label::new(Some("Nenhuma GPU detectada")));
     }
+    push_history(&w.gpu_hist, gpus.first().and_then(|g| g.usage_pct).unwrap_or(0.0) as f32);
+    w.gpu_card.append(&w.gpu_spark);
+    w.gpu_spark.queue_draw();
 
     clear_box(&w.disk_card);
     let dtitle = gtk::Label::new(Some("DISCO DO SISTEMA"));
@@ -294,6 +417,15 @@ fn refresh_cpu_page(container: &gtk::Box, state: &mut AppState) {
     header_row.append(&stat_row("Freq", &stat_label(&format!("{freq} MHz"), "stat-gray")));
     inner.append(&header_row);
 
+    state.cpu_page_hist.push_back(usage);
+    if state.cpu_page_hist.len() > HISTORY_LEN {
+        state.cpu_page_hist.pop_front();
+    }
+    let spark = build_sparkline_snapshot(state.cpu_page_hist.iter().copied().collect(), (0.145, 0.388, 0.922));
+    inner.append(&spark);
+
+    let core_temp_map = build_core_temp_map(&temps, procstat::cpu_core_count());
+
     let flow = gtk::FlowBox::new();
     flow.set_selection_mode(gtk::SelectionMode::None);
     flow.set_max_children_per_line(16);
@@ -306,6 +438,8 @@ fn refresh_cpu_page(container: &gtk::Box, state: &mut AppState) {
         let cur = cores[&id];
         let prev = state.prev_cpu_cores.get(&id).copied().unwrap_or_default();
         let pct = procstat::usage_pct(&prev, &cur);
+        let core_temp = core_temp_map.get(id).copied().flatten();
+
         let cell = gtk::Box::new(gtk::Orientation::Vertical, 0);
         cell.add_css_class("core-cell");
         let pct_lbl = gtk::Label::new(Some(&format!("{pct:.0}%")));
@@ -314,6 +448,19 @@ fn refresh_cpu_page(container: &gtk::Box, state: &mut AppState) {
         id_lbl.add_css_class("stat-gray");
         cell.append(&pct_lbl);
         cell.append(&id_lbl);
+
+        // Barra de temperatura: pequena faixa colorida no rodapé da célula, igual ao
+        // indicador laranja/verde da v2.0 (verde = frio, laranja/vermelho = quente).
+        let temp_bar = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        temp_bar.set_size_request(-1, 3);
+        temp_bar.set_margin_top(4);
+        if let Some(t) = core_temp {
+            temp_bar.add_css_class(temp_css_class(t));
+        } else {
+            temp_bar.add_css_class("temp-unknown");
+        }
+        cell.append(&temp_bar);
+
         flow.insert(&cell, -1);
     }
     inner.append(&flow);

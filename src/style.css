@@ -104,3 +104,8 @@ window, .background {
   padding: 6px;
   min-width: 56px;
 }
+
+.temp-cool { background-color: #34d399; border-radius: 2px; }
+.temp-warm { background-color: #f59e0b; border-radius: 2px; }
+.temp-hot { background-color: #ef4444; border-radius: 2px; }
+.temp-unknown { background-color: #d1d5db; border-radius: 2px; }
