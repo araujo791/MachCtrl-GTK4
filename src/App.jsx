@@ -925,29 +925,81 @@ function EnergyPage({ t }) {
 function CleanerPage({ t }) {
   const [tasks, setTasks] = useState(null);
   const [results, setResults] = useState({});
+  const [running, setRunning] = useState(false);
+  const [currentTask, setCurrentTask] = useState(null);
   useEffect(() => { invoke("get_clean_tasks").then(setTasks).catch(() => setTasks([])); }, []);
   if (tasks === null) return <Loading t={t} />;
+
+  const cleanAll = async () => {
+    setRunning(true);
+    setResults({});
+    for (const task of tasks) {
+      setCurrentTask(task.id);
+      try {
+        const r = await invoke("run_clean", { taskId: task.id });
+        setResults((prev) => ({ ...prev, [task.id]: {
+          ok: r.ok, text: `${r.result}${r.cleaned ? " (" + r.cleaned + ")" : ""}`,
+        } }));
+      } catch {
+        setResults((prev) => ({ ...prev, [task.id]: { ok: false, text: "Falhou" } }));
+      }
+    }
+    setCurrentTask(null);
+    setRunning(false);
+  };
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {tasks.map((task) => (
-        <div key={task.id} style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 14,
-          padding: 18, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontWeight: 700, fontSize: 14 }}>{task.label}</span>
-              {task.needs_root && <span style={{ fontSize: 9, fontWeight: 800, color: ACCENT.orange,
-                background: `${ACCENT.orange}22`, padding: "2px 8px", borderRadius: 5 }}>ROOT</span>}
-            </div>
-            <div style={{ color: t.textFaint, fontSize: 12, marginTop: 2 }}>{task.description}</div>
-            {results[task.id] && <div style={{ color: ACCENT.green, fontSize: 12, marginTop: 4 }}>
-              {results[task.id]}</div>}
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Botão único Limpar tudo */}
+      <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 16, padding: 20,
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>Limpeza do sistema</div>
+          <div style={{ color: t.textFaint, fontSize: 13, marginTop: 2 }}>
+            {tasks.length} tarefas de limpeza · remove caches, logs e arquivos temporários
           </div>
-          <button onClick={() => invoke("run_clean", { taskId: task.id }).then((r) =>
-            setResults((prev) => ({ ...prev, [task.id]: `${r.result}${r.cleaned ? " (" + r.cleaned + ")" : ""}` }))).catch(() => {})}
-            style={{ padding: "8px 18px", borderRadius: 8, border: `1px solid ${t.stroke}`,
-              background: t.panel, color: t.text, cursor: "pointer", fontWeight: 600 }}>Executar</button>
         </div>
-      ))}
+        <button onClick={cleanAll} disabled={running} style={{
+          display: "flex", alignItems: "center", gap: 8, padding: "12px 24px", borderRadius: 10,
+          border: "none", background: running ? t.panel : ACCENT.red, color: running ? t.textDim : "#fff",
+          fontWeight: 700, fontSize: 14, cursor: running ? "default" : "pointer", whiteSpace: "nowrap" }}>
+          <Trash2 size={16} color={running ? t.textDim : "#fff"} />
+          {running ? "Limpando…" : "Limpar tudo"}
+        </button>
+      </div>
+
+      {/* Lista de tarefas (sem botões individuais) */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {tasks.map((task) => {
+          const res = results[task.id];
+          const isCurrent = currentTask === task.id;
+          return (
+            <div key={task.id} style={{ background: t.card, border: `1px solid ${isCurrent ? ACCENT.red + "66" : t.stroke}`,
+              borderRadius: 14, padding: 16, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontWeight: 700, fontSize: 14 }}>{task.label}</span>
+                  {task.needs_root && <span style={{ fontSize: 9, fontWeight: 800, color: ACCENT.orange,
+                    background: `${ACCENT.orange}22`, padding: "2px 8px", borderRadius: 5 }}>ROOT</span>}
+                </div>
+                <div style={{ color: t.textFaint, fontSize: 12, marginTop: 2 }}>{task.description}</div>
+                {res && <div style={{ color: res.ok ? ACCENT.green : ACCENT.red, fontSize: 12, marginTop: 4 }}>
+                  {res.ok ? "✓ " : "✗ "}{res.text}</div>}
+              </div>
+              {/* indicador de estado por tarefa */}
+              <div style={{ flexShrink: 0 }}>
+                {isCurrent ? (
+                  <span style={{ fontSize: 12, color: ACCENT.red, fontWeight: 700 }}>limpando…</span>
+                ) : res ? (
+                  <span style={{ fontSize: 16, color: res.ok ? ACCENT.green : ACCENT.red }}>{res.ok ? "✓" : "✗"}</span>
+                ) : (
+                  <span style={{ fontSize: 12, color: t.textFaint }}>—</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
