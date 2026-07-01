@@ -7,85 +7,98 @@ use std::time::Instant;
 
 const RAPL_BASE: &str = "/sys/class/powercap";
 
-/// Encontra o primeiro domínio RAPL "package" (intel-rapl:0, etc.) e retorna o
-/// caminho do arquivo energy_uj, igual ao Python faz via glob em intel-rapl*.
-pub fn find_rapl_energy_path() -> Option<PathBuf> {
-    let entries = fs::read_dir(RAPL_BASE).ok()?;
+/// Encontra TODOS os domínios RAPL "package" (intel-rapl:0, intel-rapl:1, ...).
+/// Máquinas multi-socket têm um domínio por socket — precisamos somar todos,
+/// senão só medimos o consumo de uma CPU. Retorna (energy_uj_path, max_range_uj).
+pub fn find_all_rapl_packages() -> Vec<(PathBuf, Option<u64>)> {
+    let mut out = Vec::new();
+    let Ok(entries) = fs::read_dir(RAPL_BASE) else { return out };
     for entry in entries.filter_map(|e| e.ok()) {
         let path = entry.path();
-        let name_file = path.join("name");
-        if let Ok(name) = fs::read_to_string(&name_file) {
+        // só domínios de topo intel-rapl:N (não os subdomínios intel-rapl:N:M)
+        let fname = path.file_name().and_then(|f| f.to_str()).unwrap_or("");
+        if !fname.starts_with("intel-rapl:") || fname.matches(':').count() != 1 {
+            continue;
+        }
+        if let Ok(name) = fs::read_to_string(path.join("name")) {
             if name.trim().starts_with("package") {
                 let energy_file = path.join("energy_uj");
                 if energy_file.exists() {
-                    return Some(energy_file);
+                    let max = fs::read_to_string(path.join("max_energy_range_uj"))
+                        .ok()
+                        .and_then(|s| s.trim().parse::<u64>().ok());
+                    out.push((energy_file, max));
                 }
             }
         }
     }
-    None
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
 }
 
-/// Estado persistente entre leituras pra calcular potência média (delta energia / delta tempo),
-/// igual ao Python guarda prev_energy/prev_time entre chamadas. Sem isso a leitura instantânea
-/// de energy_uj não tem sentido (é um contador acumulado, não potência instantânea).
+/// Estado persistente entre leituras pra calcular potência média (delta energia / delta tempo).
+/// Agora acompanha TODOS os domínios package (um por socket) e soma o consumo.
 pub struct RaplReader {
-    energy_path: Option<PathBuf>,
-    prev_energy_uj: Option<u64>,
+    packages: Vec<(PathBuf, Option<u64>)>, // (energy_uj, max_range_uj) por socket
+    prev_energy_uj: Vec<Option<u64>>,      // leitura anterior de cada domínio
     prev_time: Instant,
-    // energy_uj é um contador de 32/64-bit que faz wraparound; max_energy_range_uj
-    // informa o valor máximo antes de zerar (igual ao tratamento de overflow do Python).
-    max_energy_uj: Option<u64>,
 }
 
 impl RaplReader {
     pub fn new() -> Self {
-        let energy_path = find_rapl_energy_path();
-        let max_energy_uj = energy_path.as_ref().and_then(|p| {
-            let max_path = p.parent()?.join("max_energy_range_uj");
-            fs::read_to_string(max_path).ok()?.trim().parse::<u64>().ok()
-        });
+        let packages = find_all_rapl_packages();
+        let n = packages.len();
         Self {
-            energy_path,
-            prev_energy_uj: None,
+            packages,
+            prev_energy_uj: vec![None; n],
             prev_time: Instant::now(),
-            max_energy_uj,
         }
     }
 
     pub fn available(&self) -> bool {
-        self.energy_path.is_some()
+        !self.packages.is_empty()
     }
 
-    /// Retorna watts médios desde a última chamada, ou None se não houver leitura anterior
-    /// (primeira chamada) ou RAPL indisponível (sistemas sem Intel RAPL, ex: AMD/ARM).
+    /// Retorna a SOMA dos watts de todos os sockets desde a última chamada, ou None
+    /// na primeira leitura / se RAPL indisponível.
     pub fn read_watts(&mut self) -> Option<f64> {
-        let path = self.energy_path.as_ref()?;
-        let current_energy: u64 = fs::read_to_string(path).ok()?.trim().parse().ok()?;
+        if self.packages.is_empty() {
+            return None;
+        }
         let now = Instant::now();
+        let dt = now.duration_since(self.prev_time).as_secs_f64();
+        if dt <= 0.0 {
+            return None;
+        }
 
-        let watts = match self.prev_energy_uj {
-            Some(prev) => {
-                let dt = now.duration_since(self.prev_time).as_secs_f64();
-                if dt <= 0.0 {
-                    None
+        let mut total_watts = 0.0;
+        let mut had_prev = false;
+        for (i, (path, max)) in self.packages.iter().enumerate() {
+            let Ok(current) = fs::read_to_string(path).and_then(|s| {
+                s.trim().parse::<u64>().map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "parse"))
+            }) else {
+                continue;
+            };
+            if let Some(prev) = self.prev_energy_uj[i] {
+                had_prev = true;
+                let delta_uj = if current >= prev {
+                    current - prev
                 } else {
-                    let delta_uj = if current_energy >= prev {
-                        current_energy - prev
-                    } else {
-                        // wraparound do contador
-                        let max = self.max_energy_uj.unwrap_or(u32::MAX as u64);
-                        (max - prev) + current_energy
-                    };
-                    Some((delta_uj as f64 / 1_000_000.0) / dt)
-                }
+                    // wraparound do contador
+                    let m = max.unwrap_or(u32::MAX as u64);
+                    (m - prev) + current
+                };
+                total_watts += (delta_uj as f64 / 1_000_000.0) / dt;
             }
-            None => None,
-        };
+            self.prev_energy_uj[i] = Some(current);
+        }
 
-        self.prev_energy_uj = Some(current_energy);
         self.prev_time = now;
-        watts
+        if had_prev {
+            Some(total_watts)
+        } else {
+            None
+        }
     }
 }
 
