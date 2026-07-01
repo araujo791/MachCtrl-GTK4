@@ -149,18 +149,54 @@ pub fn read_meminfo() -> MemInfo {
 
 #[derive(Clone)]
 pub struct DiskInfo {
+    pub device: String,     // ex: /dev/nvme0n1p2
     pub mountpoint: String,
     pub fstype: String,
+    pub disk_type: String,  // "nvme" | "ssd" | "hdd" | "usb"
     pub total_gb: f64,
     pub used_gb: f64,
     pub free_gb: f64,
     pub usage_pct: f64,
 }
 
+/// Descobre o tipo físico de um device de bloco (nvme/ssd/hdd/usb) via sysfs.
+/// - NVMe: nome começa com "nvme"
+/// - USB: o caminho do device em /sys aponta pra um barramento usb
+/// - SSD vs HDD: /sys/block/<disk>/queue/rotational (0 = SSD, 1 = HDD)
+fn detect_disk_type(device: &str) -> String {
+    // extrai o nome do disco base (nvme0n1p2 -> nvme0n1, sda1 -> sda)
+    let dev_name = device.trim_start_matches("/dev/");
+    let base = if dev_name.starts_with("nvme") {
+        // nvme0n1p2 -> nvme0n1
+        dev_name.split('p').next().unwrap_or(dev_name).to_string()
+    } else {
+        // sda1 -> sda ; remove dígitos finais
+        dev_name.trim_end_matches(|c: char| c.is_ascii_digit()).to_string()
+    };
+
+    if base.starts_with("nvme") {
+        return "nvme".to_string();
+    }
+
+    // USB? Verifica se o link real do device passa por um controlador usb
+    if let Ok(link) = fs::read_link(format!("/sys/block/{base}")) {
+        if link.to_string_lossy().contains("usb") {
+            return "usb".to_string();
+        }
+    }
+
+    // rotational: 0 = SSD, 1 = HDD
+    match fs::read_to_string(format!("/sys/block/{base}/queue/rotational")) {
+        Ok(v) if v.trim() == "0" => "ssd".to_string(),
+        Ok(v) if v.trim() == "1" => "hdd".to_string(),
+        _ => "hdd".to_string(),
+    }
+}
+
 /// Usa `df` (sempre presente em qualquer Linux) em vez de reimplementar parsing de
 /// statvfs/mountinfo na mão — igual ao espírito do cleaner.rs, que já shella pra `du`.
 pub fn read_disks() -> Vec<DiskInfo> {
-    let output = Command::new("df").args(["-B1", "--output=target,fstype,size,used,avail"]).output();
+    let output = Command::new("df").args(["-B1", "--output=source,target,fstype,size,used,avail"]).output();
     let Ok(output) = output else { return Vec::new() };
     let stdout = String::from_utf8_lossy(&output.stdout);
 
@@ -169,15 +205,16 @@ pub fn read_disks() -> Vec<DiskInfo> {
         .skip(1) // cabeçalho
         .filter_map(|line| {
             let f: Vec<&str> = line.split_whitespace().collect();
-            if f.len() < 5 {
+            if f.len() < 6 {
                 return None;
             }
-            let mountpoint = f[0].to_string();
+            let device = f[0].to_string();
+            let mountpoint = f[1].to_string();
             // ignora pseudo-filesystems (tmpfs, devtmpfs, proc, sysfs, overlay de containers etc.)
-            if !mountpoint.starts_with('/') || mountpoint.starts_with("/sys") || mountpoint.starts_with("/proc") || mountpoint.starts_with("/dev") || mountpoint.starts_with("/run") {
+            if !mountpoint.starts_with('/') || mountpoint.starts_with("/sys") || mountpoint.starts_with("/proc") || mountpoint.starts_with("/dev/") || mountpoint == "/dev" || mountpoint.starts_with("/run") {
                 return None;
             }
-            let fstype = f[1].to_string();
+            let fstype = f[2].to_string();
             if matches!(fstype.as_str(), "tmpfs" | "devtmpfs" | "squashfs" | "overlay" | "proc" | "sysfs" | "cgroup2")
                 || fstype.starts_with("fuse")
                 || fstype == "nfs"
@@ -187,12 +224,15 @@ pub fn read_disks() -> Vec<DiskInfo> {
             {
                 return None;
             }
-            let total_b: f64 = f[2].parse().ok()?;
-            let used_b: f64 = f[3].parse().ok()?;
-            let free_b: f64 = f[4].parse().ok()?;
+            let total_b: f64 = f[3].parse().ok()?;
+            let used_b: f64 = f[4].parse().ok()?;
+            let free_b: f64 = f[5].parse().ok()?;
+            let disk_type = detect_disk_type(&device);
             Some(DiskInfo {
+                device,
                 mountpoint,
                 fstype,
+                disk_type,
                 total_gb: total_b / 1_073_741_824.0,
                 used_gb: used_b / 1_073_741_824.0,
                 free_gb: free_b / 1_073_741_824.0,
@@ -201,6 +241,61 @@ pub fn read_disks() -> Vec<DiskInfo> {
         })
         .collect()
 }
+
+// ---------------------------------------------------------------------------
+// I/O de disco (leitura/escrita) via /proc/diskstats
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Default)]
+pub struct DiskIoCounters {
+    pub device: String,      // nome base, ex: nvme0n1, sda
+    pub read_bytes: u64,
+    pub write_bytes: u64,
+}
+
+/// Lê /proc/diskstats e retorna bytes lidos/escritos acumulados por device físico.
+/// Campos relevantes (por linha): col 3 = nome, col 6 = setores lidos, col 10 = setores
+/// escritos. Um setor = 512 bytes. O delta entre duas chamadas dividido pelo intervalo
+/// dá a taxa em bytes/s.
+pub fn read_disk_io() -> Vec<DiskIoCounters> {
+    let Ok(content) = fs::read_to_string("/proc/diskstats") else {
+        return Vec::new();
+    };
+    content
+        .lines()
+        .filter_map(|line| {
+            let f: Vec<&str> = line.split_whitespace().collect();
+            if f.len() < 10 {
+                return None;
+            }
+            let name = f[2].to_string();
+            // só devices físicos inteiros (nvme0n1, sda), não partições nem loop/ram
+            let is_whole = (name.starts_with("nvme") && name.contains('n') && !name.contains('p'))
+                || (name.starts_with("sd") && name.chars().last().map(|c| !c.is_ascii_digit()).unwrap_or(false));
+            if !is_whole || name.starts_with("loop") || name.starts_with("ram") {
+                return None;
+            }
+            let sectors_read: u64 = f[5].parse().ok()?;
+            let sectors_written: u64 = f[9].parse().ok()?;
+            Some(DiskIoCounters {
+                device: name,
+                read_bytes: sectors_read * 512,
+                write_bytes: sectors_written * 512,
+            })
+        })
+        .collect()
+}
+
+/// Nome base do disco físico a partir do device de partição (/dev/nvme0n1p2 -> nvme0n1).
+pub fn disk_base_name(device: &str) -> String {
+    let dev = device.trim_start_matches("/dev/");
+    if dev.starts_with("nvme") {
+        dev.split('p').next().unwrap_or(dev).to_string()
+    } else {
+        dev.trim_end_matches(|c: char| c.is_ascii_digit()).to_string()
+    }
+}
+
 
 #[derive(Default, Clone)]
 pub struct NetAdapter {

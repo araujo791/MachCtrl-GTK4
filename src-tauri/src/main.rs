@@ -22,6 +22,8 @@ struct AppState {
     prev_cpu_overall: procstat::CpuTimes,
     prev_cpu_cores: HashMap<usize, procstat::CpuTimes>,
     prev_net: Vec<procstat::NetAdapter>,
+    prev_disk_io: Vec<procstat::DiskIoCounters>,
+    prev_disk_io_time: std::time::Instant,
     rapl: power::RaplReader,
 }
 
@@ -32,6 +34,8 @@ impl Default for AppState {
             prev_cpu_overall: overall,
             prev_cpu_cores: cores,
             prev_net: procstat::read_net_counters(),
+            prev_disk_io: procstat::read_disk_io(),
+            prev_disk_io_time: std::time::Instant::now(),
             rapl: power::RaplReader::new(),
         }
     }
@@ -77,12 +81,16 @@ struct GpuDto {
 
 #[derive(Serialize)]
 struct DiskDto {
+    device: String,
     mountpoint: String,
     fstype: String,
+    disk_type: String,
     total_gb: f64,
     used_gb: f64,
     free_gb: f64,
     usage_pct: f64,
+    read_mbs: f64,
+    write_mbs: f64,
 }
 
 #[derive(Serialize)]
@@ -263,16 +271,34 @@ fn get_snapshot(state: tauri::State<SharedState>) -> Snapshot {
         })
         .collect();
 
-    // --- discos ---
+    // --- discos + I/O (delta de /proc/diskstats) ---
+    let cur_disk_io = procstat::read_disk_io();
+    let io_dt = st.prev_disk_io_time.elapsed().as_secs_f64().max(0.001);
     let disks: Vec<DiskDto> = procstat::read_disks()
         .into_iter()
-        .map(|d| DiskDto {
-            mountpoint: d.mountpoint,
-            fstype: d.fstype,
-            total_gb: d.total_gb,
-            used_gb: d.used_gb,
-            free_gb: d.free_gb,
-            usage_pct: d.usage_pct,
+        .map(|d| {
+            let base = procstat::disk_base_name(&d.device);
+            let cur = cur_disk_io.iter().find(|c| c.device == base);
+            let prev = st.prev_disk_io.iter().find(|c| c.device == base);
+            let (read_mbs, write_mbs) = match (cur, prev) {
+                (Some(c), Some(p)) => (
+                    (c.read_bytes.saturating_sub(p.read_bytes)) as f64 / 1_048_576.0 / io_dt,
+                    (c.write_bytes.saturating_sub(p.write_bytes)) as f64 / 1_048_576.0 / io_dt,
+                ),
+                _ => (0.0, 0.0),
+            };
+            DiskDto {
+                device: d.device,
+                mountpoint: d.mountpoint,
+                fstype: d.fstype,
+                disk_type: d.disk_type,
+                total_gb: d.total_gb,
+                used_gb: d.used_gb,
+                free_gb: d.free_gb,
+                usage_pct: d.usage_pct,
+                read_mbs,
+                write_mbs,
+            }
         })
         .collect();
 
@@ -321,6 +347,8 @@ fn get_snapshot(state: tauri::State<SharedState>) -> Snapshot {
     st.prev_cpu_overall = overall;
     st.prev_cpu_cores = cur_cores;
     st.prev_net = cur_net;
+    st.prev_disk_io = cur_disk_io;
+    st.prev_disk_io_time = std::time::Instant::now();
 
     Snapshot {
         cpu_usage,

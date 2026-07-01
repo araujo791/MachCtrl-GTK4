@@ -5,7 +5,8 @@ import {
 } from "recharts";
 import {
   LayoutDashboard, Cpu, MemoryStick, HardDrive, Fan, Zap,
-  Trash2, Gauge, Info, Sun, Moon, Activity,
+  Trash2, Gauge, Info, Sun, Moon, Activity, Usb, Database,
+  ArrowDown, ArrowUp,
 } from "lucide-react";
 
 // ---------- temas ----------
@@ -459,34 +460,86 @@ function MemoryPage({ t, snap }) {
   );
 }
 
+const DISK_TYPES = {
+  nvme: { label: "NVMe", color: "#3b82f6", icon: Zap },
+  ssd: { label: "SSD", color: "#22d3ee", icon: Database },
+  hdd: { label: "HDD", color: "#fb923c", icon: HardDrive },
+  usb: { label: "USB", color: "#a78bfa", icon: Usb },
+};
+
 function DisksPage({ t, snap }) {
+  const ioHist = useRef({}); // por device: { read: [], write: [] }
   if (!snap) return <Loading t={t} />;
+
+  // acumula histórico de I/O pra mini-gráficos
+  snap.disks.forEach((d) => {
+    if (!ioHist.current[d.device]) ioHist.current[d.device] = { read: [], write: [] };
+    const h = ioHist.current[d.device];
+    h.read = [...h.read, d.read_mbs].slice(-30);
+    h.write = [...h.write, d.write_mbs].slice(-30);
+  });
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {snap.disks.map((d) => (
-        <div key={d.mountpoint} style={{ background: t.card, border: `1px solid ${t.stroke}`,
-          borderRadius: 14, padding: 18 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>{d.mountpoint}</div>
-              <div style={{ color: t.textFaint, fontSize: 12 }}>{d.fstype}</div>
-            </div>
-            <div style={{ display: "flex", gap: 28 }}>
-              {[["USO", `${d.usage_pct.toFixed(0)}%`, ACCENT.blue],
-                ["LIVRE", `${d.free_gb.toFixed(1)} GB`, t.textDim],
-                ["TOTAL", `${d.total_gb.toFixed(1)} GB`, t.textDim]].map(([l, v, c]) => (
-                <div key={l} style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 10, color: t.textFaint, fontWeight: 600 }}>{l}</div>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: c }}>{v}</div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
+      {snap.disks.map((d) => {
+        const info = DISK_TYPES[d.disk_type] || DISK_TYPES.hdd;
+        const Icon = info.icon;
+        const h = ioHist.current[d.device] || { read: [], write: [] };
+        return (
+          <div key={d.device} style={{ background: t.card, border: `1px solid ${t.stroke}`,
+            borderRadius: 16, padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
+            {/* header */}
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 9, background: `${info.color}22`,
+                  display: "grid", placeItems: "center", flexShrink: 0 }}>
+                  <Icon size={18} color={info.color} />
                 </div>
-              ))}
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 9, fontWeight: 800, color: info.color,
+                      background: `${info.color}22`, padding: "2px 7px", borderRadius: 5 }}>{info.label}</span>
+                    <span style={{ fontWeight: 700, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden",
+                      textOverflow: "ellipsis" }} title={d.mountpoint}>{d.mountpoint}</span>
+                  </div>
+                  <div style={{ color: t.textFaint, fontSize: 11, marginTop: 2 }}>{d.device} · {d.fstype}</div>
+                </div>
+              </div>
+              <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: info.color }}>{d.usage_pct.toFixed(1)}%</div>
+                <div style={{ fontSize: 11, color: t.textFaint }}>{d.used_gb.toFixed(1)}/{d.total_gb.toFixed(1)} GB</div>
+              </div>
+            </div>
+
+            {/* barra de uso */}
+            <div style={{ height: 6, background: t.panel, borderRadius: 3, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${d.usage_pct}%`, background: info.color, borderRadius: 3 }} />
+            </div>
+
+            {/* I/O: leitura e escrita */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <IoRow t={t} icon={ArrowDown} label="Leitura" value={d.read_mbs} color={ACCENT.green} hist={h.read} />
+              <IoRow t={t} icon={ArrowUp} label="Escrita" value={d.write_mbs} color={ACCENT.orange} hist={h.write} />
             </div>
           </div>
-          <div style={{ height: 8, background: t.panel, borderRadius: 4, overflow: "hidden" }}>
-            <div style={{ height: "100%", width: `${d.usage_pct}%`, background: ACCENT.blue, borderRadius: 4 }} />
-          </div>
-        </div>
-      ))}
+        );
+      })}
+    </div>
+  );
+}
+
+function IoRow({ t, icon: Icon, label, value, color, hist }) {
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: t.textFaint }}>
+          <Icon size={13} color={color} /> {label}
+        </span>
+        <span style={{ fontSize: 13, fontWeight: 700, color }}>{value.toFixed(1)} MB/s</span>
+      </div>
+      <div style={{ height: 24 }}>
+        <Sparkline data={hist} color={color} height={24} />
+      </div>
     </div>
   );
 }
