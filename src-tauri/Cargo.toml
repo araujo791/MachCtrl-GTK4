@@ -13,6 +13,11 @@ tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 glob = "0.3"
+# Restringe a `time` a versões anteriores à 0.3.42, que mudou a assinatura do
+# método parse() e quebrou a crate `cookie` 0.18 (dependência transitiva do
+# Tauri). Sintoma sem isso: "this method takes 2 arguments but 1 was supplied"
+# ao compilar `cookie`.
+time = ">=0.3.36, <0.3.42"
 
 [profile.release]
 opt-level = "s"
