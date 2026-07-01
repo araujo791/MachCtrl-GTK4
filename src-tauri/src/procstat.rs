@@ -211,12 +211,24 @@ pub fn read_disks() -> Vec<DiskInfo> {
             let device = f[0].to_string();
             let mountpoint = f[1].to_string();
             // ignora pseudo-filesystems (tmpfs, devtmpfs, proc, sysfs, overlay de containers etc.)
-            if !mountpoint.starts_with('/') || mountpoint.starts_with("/sys") || mountpoint.starts_with("/proc") || mountpoint.starts_with("/dev/") || mountpoint == "/dev" || mountpoint.starts_with("/run") {
+            // Bloqueia caminhos de sistema, MAS permite mídia externa montada pelo
+            // desktop em /run/media/<user>/... (pendrives, HDDs externos no KDE/GNOME).
+            let is_removable_media = mountpoint.starts_with("/run/media/") || mountpoint.starts_with("/media/") || mountpoint.starts_with("/mnt/");
+            if !mountpoint.starts_with('/')
+                || mountpoint.starts_with("/sys")
+                || mountpoint.starts_with("/proc")
+                || mountpoint.starts_with("/dev/")
+                || mountpoint == "/dev"
+                || (mountpoint.starts_with("/run") && !is_removable_media)
+            {
                 return None;
             }
             let fstype = f[2].to_string();
+            // fuseblk é usado por discos reais (NTFS/exFAT externos), então NÃO bloqueamos.
+            // Só barramos fuse.* virtuais (rclone, sshfs, etc.) que não são hardware local.
+            let is_virtual_fuse = fstype.starts_with("fuse.") || fstype == "fuse";
             if matches!(fstype.as_str(), "tmpfs" | "devtmpfs" | "squashfs" | "overlay" | "proc" | "sysfs" | "cgroup2")
-                || fstype.starts_with("fuse")
+                || is_virtual_fuse
                 || fstype == "nfs"
                 || fstype == "nfs4"
                 || fstype == "cifs"
