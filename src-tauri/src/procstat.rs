@@ -411,6 +411,28 @@ pub fn read_kernel_version() -> String {
 
 /// Nome do produto da placa-mãe (ex: "MACHINIST X99"). Lê de DMI via sysfs,
 /// que não exige root (diferente do dmidecode).
+/// Nome do produto do sistema montado (ex: "MACHINIST E5-D8-MAX") + versão,
+/// como aparece no cabeçalho da v2.0. Lido do DMI product_name/product_version.
+pub fn read_product_name() -> String {
+    let name = fs::read_to_string("/sys/devices/virtual/dmi/id/product_name")
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+    let version = fs::read_to_string("/sys/devices/virtual/dmi/id/product_version")
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+    let is_generic = |s: &str| {
+        let l = s.to_lowercase();
+        s.is_empty() || l.contains("to be filled") || l == "default string" || l == "system product name" || l == "none"
+    };
+    let name = if is_generic(&name) { String::new() } else { name };
+    let version = if is_generic(&version) { String::new() } else { version };
+    match (name.is_empty(), version.is_empty()) {
+        (false, false) => format!("{name} ({version})"),
+        (false, true) => name,
+        _ => read_motherboard(),
+    }
+}
+
 pub fn read_motherboard() -> String {
     let vendor = fs::read_to_string("/sys/devices/virtual/dmi/id/board_vendor")
         .map(|s| s.trim().to_string())

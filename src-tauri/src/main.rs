@@ -102,6 +102,7 @@ struct ProcDto {
 #[derive(Serialize)]
 struct SystemInfo {
     hostname: String,
+    product_name: String,
     distro: String,
     uptime: String,
     cpu_model: String,
@@ -109,6 +110,9 @@ struct SystemInfo {
     motherboard: String,
     bios: String,
     install_date: String,
+    storage_total_gb: f64,
+    mem_total_gb: f64,
+    gpu_name: String,
 }
 
 #[derive(Serialize)]
@@ -329,8 +333,15 @@ fn get_snapshot(state: tauri::State<SharedState>) -> Snapshot {
 
 #[tauri::command]
 fn get_system_info() -> SystemInfo {
+    let mem = procstat::read_meminfo();
+    let storage_total_gb: f64 = procstat::read_disks().iter().map(|d| d.total_gb).sum();
+    let gpu_name = gpu::read_all_gpus()
+        .first()
+        .map(|g| g.name.clone())
+        .unwrap_or_else(|| "Nenhuma GPU detectada".to_string());
     SystemInfo {
         hostname: procstat::read_hostname(),
+        product_name: procstat::read_product_name(),
         distro: procstat::read_distro_name(),
         uptime: procstat::read_uptime_human(),
         cpu_model: procstat::read_cpu_model(),
@@ -338,6 +349,9 @@ fn get_system_info() -> SystemInfo {
         motherboard: procstat::read_motherboard(),
         bios: procstat::read_bios(),
         install_date: procstat::read_install_date(),
+        storage_total_gb,
+        mem_total_gb: mem.total_gb,
+        gpu_name,
     }
 }
 

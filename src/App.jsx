@@ -199,19 +199,33 @@ function Overview({ t, snap, sysInfo, cpuHist, ramHist, gpuHist }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      {/* Faixa de sistema */}
-      <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: "18px 22px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 18 }}>
-          <SysItem t={t} k="SISTEMA" v={sysInfo?.distro || "—"} accent={ACCENT.blue} />
-          <SysItem t={t} k="KERNEL" v={sysInfo?.kernel || "—"} accent={ACCENT.purple} />
-          <SysItem t={t} k="PLACA-MÃE" v={sysInfo?.motherboard || "—"} accent={ACCENT.cyan} />
-          <SysItem t={t} k="INSTALADO EM" v={sysInfo?.install_date || "—"} accent={ACCENT.green} />
+      {/* Cabeçalho estilo v2.0: nome da máquina + watts + info em 2 colunas */}
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 4 }}>
+          <span style={{ fontSize: 26, fontWeight: 800, color: t.text }}>
+            {sysInfo?.product_name || sysInfo?.hostname || "Sistema"}
+          </span>
+          {snap.cpu_watts != null && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 14, fontWeight: 700,
+              color: ACCENT.green, background: `${ACCENT.green}1a`, border: `1px solid ${ACCENT.green}44`,
+              padding: "5px 12px", borderRadius: 10 }}>
+              <Zap size={14} color={ACCENT.green} /> {snap.cpu_watts.toFixed(1)} W
+            </span>
+          )}
         </div>
-        {sysInfo?.bios && sysInfo.bios !== "—" && (
-          <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${t.stroke}`, fontSize: 12, color: t.textFaint }}>
-            BIOS · {sysInfo.bios}
-          </div>
-        )}
+        <div style={{ fontSize: 13, color: t.textFaint, marginBottom: 18 }}>
+          {[sysInfo?.distro, sysInfo?.kernel && `Kernel ${sysInfo.kernel}`, sysInfo?.install_date && sysInfo.install_date !== "—" && `Instalado em ${sysInfo.install_date}`]
+            .filter(Boolean).join(" · ")}
+        </div>
+        <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: "20px 24px",
+          display: "grid", gridTemplateColumns: "1fr 1fr", rowGap: 18, columnGap: 40 }}>
+          <InfoField t={t} k="PROCESSADOR" v={sysInfo?.cpu_model || snap.sockets[0]?.model || "—"} />
+          <InfoField t={t} k="GPU" v={sysInfo?.gpu_name || "—"} />
+          <InfoField t={t} k="MEMÓRIA" v={sysInfo ? `${sysInfo.mem_total_gb.toFixed(0)} GB RAM` : "—"} />
+          <InfoField t={t} k="ARMAZENAMENTO" v={sysInfo?.storage_total_gb ? `${storageHuman(sysInfo.storage_total_gb)}` : "—"} />
+          <InfoField t={t} k="PLACA-MÃE" v={sysInfo?.motherboard || "—"} />
+          <InfoField t={t} k="BIOS" v={sysInfo?.bios || "—"} />
+        </div>
       </div>
 
       {/* Três cards de destaque: CPU, Memória, GPU */}
@@ -317,13 +331,16 @@ function Overview({ t, snap, sysInfo, cpuHist, ramHist, gpuHist }) {
 }
 
 // Helpers da Visão Geral
-function SysItem({ t, k, v, accent }) {
+function InfoField({ t, k, v }) {
   return (
     <div style={{ minWidth: 0 }}>
-      <div style={{ fontSize: 10, color: accent, fontWeight: 700, letterSpacing: 0.4, marginBottom: 4 }}>{k}</div>
-      <div style={{ fontSize: 13, color: t.text, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={v}>{v}</div>
+      <div style={{ fontSize: 10, color: t.textFaint, fontWeight: 700, letterSpacing: 0.5, marginBottom: 3 }}>{k}</div>
+      <div style={{ fontSize: 14, color: t.text, fontWeight: 600 }} title={v}>{v}</div>
     </div>
   );
+}
+function storageHuman(gb) {
+  return gb >= 1000 ? `${(gb / 1024).toFixed(1)} TB` : `${gb.toFixed(0)} GB`;
 }
 function CardHead({ t, icon: Icon, accent, title, badge }) {
   return (
