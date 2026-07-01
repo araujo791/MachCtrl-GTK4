@@ -307,8 +307,15 @@ fn get_snapshot(state: tauri::State<SharedState>) -> Snapshot {
         })
         .collect();
 
-    // --- watts (RAPL, delta interno) ---
-    let cpu_watts = st.rapl.read_watts();
+    // --- watts (RAPL, delta interno) com fallback estimado ---
+    // RAPL só existe em Intel e, em kernels recentes, muitas vezes exige root pra
+    // ler energy_uj. Quando indisponível ou na primeira leitura (sem delta ainda),
+    // estimamos pelo uso de CPU × TDP dos sockets (E5-2680 v4 ≈ 120W cada).
+    let cpu_watts = st.rapl.read_watts().or_else(|| {
+        let n_sockets = procstat::read_cpu_topology().len().max(1);
+        let tdp_total = 120.0 * n_sockets as f64;
+        Some(power::estimate_power_watts(cpu_usage, tdp_total))
+    });
 
     // atualiza estado pra próximos deltas
     st.prev_cpu_overall = overall;
