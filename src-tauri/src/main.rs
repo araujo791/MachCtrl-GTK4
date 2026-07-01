@@ -5,7 +5,6 @@ mod cleaner;
 mod gpu;
 mod hwmon;
 mod memory;
-mod power;
 mod procstat;
 mod profiles;
 
@@ -24,7 +23,6 @@ struct AppState {
     prev_net: Vec<procstat::NetAdapter>,
     prev_disk_io: Vec<procstat::DiskIoCounters>,
     prev_disk_io_time: std::time::Instant,
-    rapl: power::RaplReader,
 }
 
 impl Default for AppState {
@@ -36,7 +34,6 @@ impl Default for AppState {
             prev_net: procstat::read_net_counters(),
             prev_disk_io: procstat::read_disk_io(),
             prev_disk_io_time: std::time::Instant::now(),
-            rapl: power::RaplReader::new(),
         }
     }
 }
@@ -128,7 +125,6 @@ struct Snapshot {
     cpu_usage: f32,
     cpu_temp_c: Option<f64>,
     cpu_freq_mhz: u64,
-    cpu_watts: Option<f64>,
     mem_used_gb: f64,
     mem_total_gb: f64,
     mem_pct: f64,
@@ -334,15 +330,6 @@ fn get_snapshot(state: tauri::State<SharedState>) -> Snapshot {
         .collect();
 
     // --- watts (RAPL, delta interno) com fallback estimado ---
-    // RAPL só existe em Intel e, em kernels recentes, muitas vezes exige root pra
-    // ler energy_uj. Quando indisponível ou na primeira leitura (sem delta ainda),
-    // estimamos pelo uso de CPU × TDP dos sockets (E5-2680 v4 ≈ 120W cada).
-    let cpu_watts = st.rapl.read_watts().or_else(|| {
-        let n_sockets = procstat::read_cpu_topology().len().max(1);
-        let tdp_total = 120.0 * n_sockets as f64;
-        Some(power::estimate_power_watts(cpu_usage, tdp_total))
-    });
-
     // atualiza estado pra próximos deltas
     st.prev_cpu_overall = overall;
     st.prev_cpu_cores = cur_cores;
@@ -354,7 +341,6 @@ fn get_snapshot(state: tauri::State<SharedState>) -> Snapshot {
         cpu_usage,
         cpu_temp_c: pkg_temp,
         cpu_freq_mhz: procstat::read_cpu_freq_mhz(),
-        cpu_watts,
         mem_used_gb: mem.used_gb,
         mem_total_gb: mem.total_gb,
         mem_pct: mem.usage_pct,

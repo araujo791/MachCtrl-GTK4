@@ -201,19 +201,12 @@ function Overview({ t, snap, sysInfo, cpuHist, ramHist, gpuHist }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      {/* Cabeçalho estilo v2.0: nome da máquina + watts + info em 2 colunas */}
+      {/* Cabeçalho estilo v2.0: nome da máquina + info em 2 colunas */}
       <div>
         <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 4 }}>
           <span style={{ fontSize: 26, fontWeight: 800, color: t.text }}>
             {sysInfo?.product_name || sysInfo?.hostname || "Sistema"}
           </span>
-          {snap.cpu_watts != null && (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 14, fontWeight: 700,
-              color: ACCENT.green, background: `${ACCENT.green}1a`, border: `1px solid ${ACCENT.green}44`,
-              padding: "5px 12px", borderRadius: 10 }}>
-              <Zap size={14} color={ACCENT.green} /> {snap.cpu_watts.toFixed(1)} W
-            </span>
-          )}
         </div>
         <div style={{ fontSize: 13, color: t.textFaint, marginBottom: 18 }}>
           {[sysInfo?.distro, sysInfo?.kernel && `Kernel ${sysInfo.kernel}`, sysInfo?.install_date && sysInfo.install_date !== "—" && `Instalado em ${sysInfo.install_date}`]
@@ -244,7 +237,6 @@ function Overview({ t, snap, sysInfo, cpuHist, ramHist, gpuHist }) {
             <MiniStat t={t} k="Threads" v={`${snap.sockets.reduce((a, s) => a + s.threads, 0)}`} />
             <MiniStat t={t} k="Temp" v={snap.cpu_temp_c != null ? `${snap.cpu_temp_c.toFixed(0)}°C` : "—"} c={ACCENT.green} />
             <MiniStat t={t} k="Freq" v={`${(snap.cpu_freq_mhz / 1000).toFixed(2)} GHz`} />
-            {snap.cpu_watts != null && <MiniStat t={t} k="Consumo" v={`${snap.cpu_watts.toFixed(1)} W`} c={ACCENT.orange} />}
           </div>
         </div>
 
