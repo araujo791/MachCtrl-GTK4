@@ -562,6 +562,11 @@ fn run_clean(task_id: String) -> CleanResultDto {
     }
 }
 
+#[tauri::command]
+fn debug_rapl() -> String {
+    power::debug_rapl_domains()
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(SharedState::default())
@@ -576,6 +581,7 @@ fn main() {
             get_profiles,
             apply_profile,
             get_clean_tasks,
+            debug_rapl,
             run_clean,
         ])
         .run(tauri::generate_context!())
