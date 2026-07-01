@@ -612,46 +612,101 @@ function IoRow({ t, icon: Icon, label, value, color, hist }) {
 
 function FansPage({ t }) {
   const [fans, setFans] = useState(null);
+  const [modes, setModes] = useState({}); // id -> 'auto' | 'manual' | 'max'
+  const [manualPct, setManualPct] = useState({}); // id -> valor do slider
   const load = useCallback(() => { invoke("get_fans").then(setFans).catch(() => setFans([])); }, []);
   useEffect(() => { load(); const iv = setInterval(load, 2000); return () => clearInterval(iv); }, [load]);
   if (fans === null) return <Loading t={t} />;
   if (fans.length === 0) return <Empty t={t} msg="Nenhum fan detectado via /sys/class/hwmon." />;
+
+  const setMode = (f, mode) => {
+    setModes((m) => ({ ...m, [f.id]: mode }));
+    if (mode === "auto") {
+      invoke("set_fan_auto", { pwmEnablePath: f.pwm_enable_path }).catch(() => {});
+    } else if (mode === "max") {
+      invoke("set_fan", { pwmPath: f.pwm_path, pwmEnablePath: f.pwm_enable_path, speed: 100 }).catch(() => {});
+    } else if (mode === "manual") {
+      const v = manualPct[f.id] ?? f.pct;
+      invoke("set_fan", { pwmPath: f.pwm_path, pwmEnablePath: f.pwm_enable_path, speed: v }).catch(() => {});
+    }
+  };
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {fans.map((f) => (
-        <div key={f.id} style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 14, padding: 18 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
+      {fans.map((f) => {
+        const mode = modes[f.id] || "auto";
+        const spinning = f.rpm > 0;
+        return (
+          <div key={f.id} style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 16,
+            padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
+            {/* header: ícone girando + nome + RPM */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                <div style={{ width: 42, height: 42, borderRadius: 11, background: `${ACCENT.cyan}18`,
+                  display: "grid", placeItems: "center", flexShrink: 0 }}>
+                  <Fan size={22} color={ACCENT.cyan}
+                    style={{ animation: spinning ? "spin 2s linear infinite" : "none" }} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden",
+                    textOverflow: "ellipsis" }} title={f.label}>{f.label}</div>
+                  <div style={{ color: t.textFaint, fontSize: 11 }}>
+                    modo: <span style={{ color: mode === "auto" ? ACCENT.green : mode === "max" ? ACCENT.red : ACCENT.blue, fontWeight: 600 }}>
+                      {mode === "auto" ? "Automático" : mode === "max" ? "Máximo" : "Manual"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: spinning ? ACCENT.blue : t.textFaint }}>{f.rpm}</div>
+                <div style={{ fontSize: 10, color: t.textFaint }}>RPM</div>
+              </div>
+            </div>
+
+            {/* barra de PWM atual */}
             <div>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>{f.label}</div>
-              <div style={{ color: t.textFaint, fontSize: 12 }}>{f.chip}</div>
-            </div>
-            <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 10, color: t.textFaint, fontWeight: 600 }}>RPM</div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: ACCENT.blue }}>{f.rpm}</div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: t.textFaint, marginBottom: 4 }}>
+                <span>PWM atual</span><span>{f.pct}%</span>
               </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 10, color: t.textFaint, fontWeight: 600 }}>PWM</div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: t.textDim }}>{f.pct}%</div>
+              <div style={{ height: 6, background: t.panel, borderRadius: 3, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${f.pct}%`, background: ACCENT.cyan, borderRadius: 3, transition: "width 0.5s" }} />
               </div>
             </div>
+
+            {f.controllable ? (
+              <>
+                {/* botões de modo */}
+                <div style={{ display: "flex", gap: 8 }}>
+                  {[["auto", "Automático", ACCENT.green], ["manual", "Manual", ACCENT.blue], ["max", "Máximo", ACCENT.red]].map(([m, label, c]) => {
+                    const on = mode === m;
+                    return (
+                      <button key={m} onClick={() => setMode(f, m)} style={{
+                        flex: 1, padding: "8px 0", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                        border: `1px solid ${on ? c : t.stroke}`,
+                        background: on ? `${c}1a` : "transparent",
+                        color: on ? c : t.textDim }}>{label}</button>
+                    );
+                  })}
+                </div>
+                {/* slider só no modo manual */}
+                {mode === "manual" && (
+                  <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                    <input type="range" min="0" max="100" value={manualPct[f.id] ?? f.pct}
+                      onChange={(e) => setManualPct((p) => ({ ...p, [f.id]: Number(e.target.value) }))}
+                      onMouseUp={(e) => invoke("set_fan", { pwmPath: f.pwm_path, pwmEnablePath: f.pwm_enable_path, speed: Number(e.target.value) }).catch(() => {})}
+                      style={{ flex: 1, accentColor: ACCENT.blue }} />
+                    <span style={{ fontSize: 13, fontWeight: 700, color: ACCENT.blue, minWidth: 40, textAlign: "right" }}>
+                      {manualPct[f.id] ?? f.pct}%
+                    </span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div style={{ color: t.textFaint, fontSize: 12 }}>Somente leitura (sem controle PWM).</div>
+            )}
           </div>
-          {f.controllable ? (
-            <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 14 }}>
-              <input type="range" min="0" max="100" defaultValue={f.pct} style={{ flex: 1 }}
-                onMouseUp={(e) => invoke("set_fan", { pwmPath: f.pwm_path, pwmEnablePath: f.pwm_enable_path, speed: Number(e.target.value) }).catch(() => {})} />
-              <button onClick={() => invoke("set_fan_auto", { pwmEnablePath: f.pwm_enable_path }).catch(() => {})}
-                style={{ padding: "8px 16px", borderRadius: 8, border: `1px solid ${t.stroke}`,
-                  background: t.panel, color: t.text, cursor: "pointer", fontWeight: 600 }}>Auto</button>
-            </div>
-          ) : (
-            <div style={{ color: t.textFaint, fontSize: 12, marginTop: 10 }}>Somente leitura (sem controle PWM).</div>
-          )}
-        </div>
-      ))}
-      <div style={{ color: t.textFaint, fontSize: 12, marginTop: 4 }}>
-        Controle de fans requer root. Rode com pkexec/sudo se os sliders não tiverem efeito.
-      </div>
+        );
+      })}
     </div>
   );
 }
