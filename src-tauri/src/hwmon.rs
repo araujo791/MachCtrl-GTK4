@@ -166,23 +166,39 @@ pub fn set_fan_auto(pwm_enable_path: &str) -> Result<(), String> {
     if !PathBuf::from(pwm_enable_path).exists() {
         return Err(format!("{pwm_enable_path} não existe"));
     }
-    // Diferentes chips usam valores diferentes pro modo automático:
-    //   nct67xx / it87: 5 = Smart Fan (curva do firmware) — é o desejado
-    //                   2 = Thermal Cruise (nem sempre configurado)
-    //   outros chips:    2 = automático
-    //   fallback:        0 = full-speed/desligar controle do driver
-    // Tentamos na ordem 5 -> 2 -> 0 e paramos no primeiro que "cola" (o chip
-    // aceita e mantém o valor após reler).
+    // A ordem de modos a tentar depende do chip:
+    //   amdgpu / nvidia: 2 = automático (driver controla pela temperatura)
+    //   nct67xx / it87:  5 = Smart Fan (curva do firmware), 2 = Thermal Cruise
+    //   fallback:        0 = full-speed/sem controle do driver
+    // Detectamos a GPU pelo caminho do sysfs (amdgpu/nvidia aparecem no link).
+    let is_gpu = {
+        let lower = pwm_enable_path.to_lowercase();
+        lower.contains("amdgpu") || lower.contains("nvidia") || {
+            // o path costuma ser /sys/class/hwmon/hwmonN/... ; resolve o name do chip
+            PathBuf::from(pwm_enable_path)
+                .parent()
+                .map(|p| p.join("name"))
+                .and_then(|np| fs::read_to_string(np).ok())
+                .map(|n| {
+                    let n = n.trim().to_lowercase();
+                    n.contains("amdgpu") || n.contains("nvidia") || n.contains("radeon")
+                })
+                .unwrap_or(false)
+        }
+    };
+
+    let modes: &[&str] = if is_gpu { &["2", "0"] } else { &["5", "2", "0"] };
+
     let mut last_err = String::new();
-    for mode in ["5", "2", "0"] {
+    for mode in modes {
         if fs::write(pwm_enable_path, mode).is_err() {
             last_err = format!("falha ao escrever modo {mode}");
             continue;
         }
         sleep(Duration::from_millis(150));
         let val = fs::read_to_string(pwm_enable_path).unwrap_or_default().trim().to_string();
-        if val == mode {
-            return Ok(()); // o chip aceitou e manteve
+        if &val == mode {
+            return Ok(());
         }
         last_err = format!("chip não manteve o modo {mode} (leu '{val}')");
     }

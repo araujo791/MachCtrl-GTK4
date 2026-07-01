@@ -100,6 +100,7 @@ export default function App() {
 
   // históricos pra sparklines
   const cpuHist = useRef([]);
+  const cpuHist2 = useRef([]);
   const ramHist = useRef([]);
   const gpuHist = useRef([]);
   const cpuSparkHist = useRef([]); // por socket na página CPU, mapeado por índice
@@ -118,7 +119,9 @@ export default function App() {
       try {
         const s = await invoke("get_snapshot");
         if (!alive) return;
-        push(cpuHist, s.cpu_usage);
+        if (s.sockets && s.sockets[0]) push(cpuHist, s.sockets[0].usage_pct);
+        else push(cpuHist, s.cpu_usage);
+        if (s.sockets && s.sockets[1]) push(cpuHist2, s.sockets[1].usage_pct);
         push(ramHist, s.mem_pct);
         push(gpuHist, s.gpus[0]?.usage_pct ?? 0);
         setSnap(s);
@@ -189,7 +192,7 @@ export default function App() {
         </div>
 
         <div style={{ flex: 1, overflow: "auto", padding: 24 }}>
-          {active === "overview" && <Overview t={t} tr={tr} snap={snap} sysInfo={sysInfo} cpuHist={cpuHist.current} ramHist={ramHist.current} gpuHist={gpuHist.current} />}
+          {active === "overview" && <Overview t={t} tr={tr} snap={snap} sysInfo={sysInfo} cpuHist={cpuHist.current} cpuHist2={cpuHist2.current} ramHist={ramHist.current} gpuHist={gpuHist.current} />}
           {active === "cpu" && <CpuPage t={t} tr={tr} snap={snap} />}
           {active === "memory" && <MemoryPage t={t} tr={tr} snap={snap} />}
           {active === "disks" && <DisksPage t={t} tr={tr} snap={snap} />}
@@ -227,7 +230,7 @@ function WindowControls({ t }) {
 }
 
 // ---------- páginas ----------
-function Overview({ t, tr, snap, sysInfo, cpuHist, ramHist, gpuHist }) {
+function Overview({ t, tr, snap, sysInfo, cpuHist, cpuHist2, ramHist, gpuHist }) {
   if (!snap) return <Loading t={t} />;
   const gpu = snap.gpus[0];
   const barData = snap.top_procs.slice(0, 6).map((p) => ({ name: p.name, mb: Math.round(p.rss_mb) }));
@@ -258,22 +261,25 @@ function Overview({ t, tr, snap, sysInfo, cpuHist, ramHist, gpuHist }) {
         </div>
       </div>
 
-      {/* Três cards de destaque: CPU, Memória, GPU */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 18 }}>
-        {/* CPU detalhado */}
-        <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: 20,
-          display: "flex", flexDirection: "column", gap: 12 }}>
-          <CardHead t={t} icon={Cpu} accent={ACCENT.blue} title="CPU" />
-          <BigValue t={t} value={snap.cpu_usage.toFixed(0)} unit="%" />
-          <div style={{ marginTop: -4 }}><Sparkline data={cpuHist} color={ACCENT.blue} /></div>
-          <div style={{ fontSize: 12, color: t.textFaint, lineHeight: 1.4 }}>{snap.sockets[0]?.model || "CPU"}</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 2 }}>
-            <MiniStat t={t} k={tr("sockets")} v={`${snap.sockets.length}`} />
-            <MiniStat t={t} k={tr("threads")} v={`${snap.sockets.reduce((a, s) => a + s.threads, 0)}`} />
-            <MiniStat t={t} k={tr("temp")} v={snap.cpu_temp_c != null ? `${snap.cpu_temp_c.toFixed(0)}°C` : "—"} c={ACCENT.green} />
-            <MiniStat t={t} k={tr("freq")} v={`${(snap.cpu_freq_mhz / 1000).toFixed(2)} GHz`} />
+      {/* Cards de destaque: uma CPU por socket + Memória + GPU */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 18 }}>
+        {/* Um card por socket de CPU */}
+        {snap.sockets.map((s, i) => (
+          <div key={s.socket_id} style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: 20,
+            display: "flex", flexDirection: "column", gap: 12 }}>
+            <CardHead t={t} icon={Cpu} accent={ACCENT.blue}
+              title={snap.sockets.length > 1 ? `CPU ${i}` : "CPU"} badge={snap.sockets.length > 1 ? `SOCKET ${s.socket_id}` : undefined} />
+            <BigValue t={t} value={s.usage_pct.toFixed(0)} unit="%" />
+            <div style={{ marginTop: -4 }}><Sparkline data={i === 0 ? cpuHist : cpuHist2} color={ACCENT.blue} /></div>
+            <div style={{ fontSize: 12, color: t.textFaint, lineHeight: 1.4 }}>{s.model}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 2 }}>
+              <MiniStat t={t} k={tr("cores")} v={`${s.phys_cores}`} />
+              <MiniStat t={t} k={tr("threads")} v={`${s.threads}`} />
+              <MiniStat t={t} k={tr("temp")} v={s.package_temp_c != null ? `${s.package_temp_c.toFixed(0)}°C` : "—"} c={ACCENT.green} />
+              <MiniStat t={t} k={tr("freq")} v={`${s.freq_ghz.toFixed(2)} GHz`} />
+            </div>
           </div>
-        </div>
+        ))}
 
         {/* Memória */}
         <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: 20,
