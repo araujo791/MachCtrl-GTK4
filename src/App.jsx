@@ -621,13 +621,21 @@ function fanRole(f) {
   return { name: "Sistema", color: "#22d3ee" };
 }
 
-function FanImage({ rpm, size = 48 }) {
-  // pás girando; velocidade da rotação varia com o RPM
+function FanImage({ rpm, size = 48, color = "#a78bfa" }) {
+  // anel externo com glow + pás girando dentro; velocidade proporcional ao RPM
   const dur = rpm > 0 ? Math.max(0.35, 2200 / rpm) : 0;
   return (
-    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0,
+      display: "grid", placeItems: "center" }}>
+      {/* anel externo com brilho */}
+      <div style={{
+        position: "absolute", inset: 0, borderRadius: "50%",
+        border: `2px solid ${color}`, boxShadow: `0 0 8px ${color}88, inset 0 0 6px ${color}55`,
+        opacity: rpm > 0 ? 1 : 0.4,
+      }} />
+      {/* pás girando */}
       <img src={fanBlade} alt="" style={{
-        width: "100%", height: "100%",
+        width: "72%", height: "72%",
         animation: dur ? `spin ${dur}s linear infinite` : "none",
       }} />
     </div>
@@ -638,7 +646,12 @@ function FansPage({ t }) {
   const [fans, setFans] = useState(null);
   const [modes, setModes] = useState({}); // id -> 'auto' | 'manual' | 'max'
   const [manualPct, setManualPct] = useState({}); // id -> valor do slider
-  const load = useCallback(() => { invoke("get_fans").then(setFans).catch(() => setFans([])); }, []);
+  const [curveModal, setCurveModal] = useState(null); // fan cujo modal de curva está aberto
+  const load = useCallback(() => {
+    invoke("get_fans")
+      .then((list) => setFans((list || []).slice().sort((a, b) => a.id.localeCompare(b.id))))
+      .catch(() => setFans([]));
+  }, []);
   useEffect(() => { load(); const iv = setInterval(load, 2000); return () => clearInterval(iv); }, [load]);
   if (fans === null) return <Loading t={t} />;
   if (fans.length === 0) return <Empty t={t} msg="Nenhum fan detectado via /sys/class/hwmon." />;
@@ -655,8 +668,17 @@ function FansPage({ t }) {
     }
   };
 
-  // conta fans por função pra numerar (CPU 1, CPU 2, GPU, ...)
-  const roleCounts = {};
+  // Pré-computa o nome de exibição de cada fan (CPU 1, GPU, Sistema 2...) de forma
+  // determinística, baseada na ordem estável por id — evita cards trocando de nome.
+  const roleTotals = {};
+  fans.forEach((f) => { const r = fanRole(f).name; roleTotals[r] = (roleTotals[r] || 0) + 1; });
+  const roleSeen = {};
+  const displayNames = {};
+  fans.forEach((f) => {
+    const r = fanRole(f).name;
+    roleSeen[r] = (roleSeen[r] || 0) + 1;
+    displayNames[f.id] = roleTotals[r] > 1 ? `${r} ${roleSeen[r]}` : r;
+  });
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
@@ -664,16 +686,14 @@ function FansPage({ t }) {
         const mode = modes[f.id] || "auto";
         const spinning = f.rpm > 0;
         const role = fanRole(f);
-        roleCounts[role.name] = (roleCounts[role.name] || 0) + 1;
-        const sameRole = fans.filter((x) => fanRole(x).name === role.name).length;
-        const displayName = sameRole > 1 ? `${role.name} ${roleCounts[role.name]}` : role.name;
+        const displayName = displayNames[f.id];
         return (
           <div key={f.id} style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 16,
             padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
             {/* header: ventilador (imagem animada) + nome + RPM */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                <FanImage rpm={f.rpm} size={48} />
+                <FanImage rpm={f.rpm} size={48} color={role.color} />
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: 9, fontWeight: 800, color: role.color,
@@ -729,7 +749,15 @@ function FansPage({ t }) {
                     </span>
                   </div>
                 )}
-                {mode === "curve" && <FanCurve t={t} />}
+                {mode === "curve" && (
+                  <button onClick={() => setCurveModal(f)} style={{
+                    padding: "10px 0", borderRadius: 8, border: `1px solid ${ACCENT.purple}44`,
+                    background: `${ACCENT.purple}12`, color: ACCENT.purple, fontWeight: 700,
+                    fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center",
+                    justifyContent: "center", gap: 6 }}>
+                    📈 Curva ativa — clique para editar
+                  </button>
+                )}
               </>
             ) : (
               <div style={{ color: t.textFaint, fontSize: 12 }}>Somente leitura (sem controle PWM).</div>
@@ -737,62 +765,122 @@ function FansPage({ t }) {
           </div>
         );
       })}
+      {curveModal && (
+        <FanCurveModal t={t} fan={curveModal} role={fanRole(curveModal)} onClose={() => setCurveModal(null)} />
+      )}
     </div>
   );
 }
 
-function FanCurve({ t }) {
-  // Pontos padrão: [temperatura°C, velocidade%]. Editor visual simples.
+function FanCurveModal({ t, fan, role, onClose }) {
+  // Pontos: [temperatura°C, velocidade%]. Editor visual + campos editáveis.
   const [points, setPoints] = useState([
-    [30, 20], [50, 35], [65, 55], [80, 85], [90, 100],
+    [30, 30], [50, 40], [65, 60], [75, 80], [85, 100],
   ]);
-  const W = 280, H = 130, pad = 24;
-  const xToPx = (temp) => pad + ((temp - 20) / 80) * (W - 2 * pad);
-  const yToPx = (spd) => H - pad - (spd / 100) * (H - 2 * pad);
+  const W = 520, H = 300, padL = 44, padB = 34, padT = 20, padR = 20;
+  const xToPx = (temp) => padL + ((temp - 20) / 80) * (W - padL - padR);
+  const yToPx = (spd) => H - padB - (spd / 100) * (H - padB - padT);
   const dragging = useRef(null);
+  const curTemp = fan.rpm > 0 ? 46 : 40; // placeholder de temp atual da GPU
 
   const onMove = (e) => {
     if (dragging.current === null) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const px = e.clientX - rect.left, py = e.clientY - rect.top;
-    let temp = Math.round(20 + ((px - pad) / (W - 2 * pad)) * 80);
-    let spd = Math.round(((H - pad - py) / (H - 2 * pad)) * 100);
+    const scaleX = W / rect.width, scaleY = H / rect.height;
+    const px = (e.clientX - rect.left) * scaleX, py = (e.clientY - rect.top) * scaleY;
+    let temp = Math.round(20 + ((px - padL) / (W - padL - padR)) * 80);
+    let spd = Math.round(((H - padB - py) / (H - padB - padT)) * 100);
     temp = Math.max(20, Math.min(100, temp));
     spd = Math.max(0, Math.min(100, spd));
-    setPoints((pts) => pts.map((p, i) => (i === dragging.current ? [temp, spd] : p))
-      .sort((a, b) => a[0] - b[0]));
+    setPoints((pts) => pts.map((p, i) => (i === dragging.current ? [temp, spd] : p)));
+  };
+  const commitSort = () => { setPoints((pts) => [...pts].sort((a, b) => a[0] - b[0])); dragging.current = null; };
+
+  const editPoint = (i, field, val) => {
+    const v = Math.max(0, Math.min(field === 0 ? 100 : 100, Number(val) || 0));
+    setPoints((pts) => pts.map((p, idx) => (idx === i ? (field === 0 ? [v, p[1]] : [p[0], v]) : p)));
   };
 
-  const path = points.map((p, i) => `${i === 0 ? "M" : "L"} ${xToPx(p[0])} ${yToPx(p[1])}`).join(" ");
+  const sorted = [...points].sort((a, b) => a[0] - b[0]);
+  const path = sorted.map((p, i) => `${i === 0 ? "M" : "L"} ${xToPx(p[0])} ${yToPx(p[1])}`).join(" ");
 
   return (
-    <div style={{ background: t.panel, borderRadius: 10, padding: 12 }}>
-      <div style={{ fontSize: 11, color: t.textFaint, marginBottom: 8 }}>
-        Curva temperatura × velocidade — arraste os pontos
-      </div>
-      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ cursor: "crosshair", touchAction: "none" }}
-        onMouseMove={onMove} onMouseUp={() => (dragging.current = null)} onMouseLeave={() => (dragging.current = null)}>
-        {/* grade */}
-        {[0, 25, 50, 75, 100].map((g) => (
-          <line key={g} x1={pad} y1={yToPx(g)} x2={W - pad} y2={yToPx(g)} stroke={t.stroke} strokeWidth="1" />
-        ))}
-        {/* área sob a curva */}
-        <path d={`${path} L ${xToPx(points[points.length - 1][0])} ${H - pad} L ${xToPx(points[0][0])} ${H - pad} Z`}
-          fill={`${ACCENT.purple}22`} />
-        {/* linha */}
-        <path d={path} fill="none" stroke={ACCENT.purple} strokeWidth="2" />
-        {/* pontos */}
-        {points.map((p, i) => (
-          <circle key={i} cx={xToPx(p[0])} cy={yToPx(p[1])} r="6" fill={ACCENT.purple} stroke="#fff" strokeWidth="1.5"
-            style={{ cursor: "grab" }} onMouseDown={() => (dragging.current = i)} />
-        ))}
-        {/* eixos */}
-        <text x={pad} y={H - 6} fill={t.textFaint} fontSize="9">20°C</text>
-        <text x={W - pad - 20} y={H - 6} fill={t.textFaint} fontSize="9">100°C</text>
-      </svg>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
-        <button style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: ACCENT.purple,
-          color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Aplicar curva</button>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)",
+      display: "grid", placeItems: "center", zIndex: 100, padding: 20 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: t.card, border: `1px solid ${t.stroke}`,
+        borderRadius: 18, padding: 26, width: "min(600px, 100%)", maxHeight: "90vh", overflow: "auto" }}>
+        {/* header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 800 }}>Curva de Fan — {fan.label}</div>
+            <div style={{ fontSize: 13, color: t.textFaint, marginTop: 4 }}>
+              {role.name}: <span style={{ color: ACCENT.orange, fontWeight: 700 }}>{curTemp}°C</span>
+              {" → "}Fan: <span style={{ color: ACCENT.blue, fontWeight: 700 }}>{fan.pct}%</span>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: t.textDim,
+            fontSize: 22, cursor: "pointer", lineHeight: 1 }}>×</button>
+        </div>
+
+        {/* gráfico grande */}
+        <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ cursor: "crosshair", touchAction: "none", marginTop: 12 }}
+          onMouseMove={onMove} onMouseUp={commitSort} onMouseLeave={commitSort}>
+          {/* grades horizontais + labels % */}
+          {[0, 25, 50, 75, 100].map((g) => (
+            <g key={g}>
+              <line x1={padL} y1={yToPx(g)} x2={W - padR} y2={yToPx(g)} stroke={t.stroke} strokeWidth="1" />
+              <text x={padL - 8} y={yToPx(g) + 3} fill={t.textFaint} fontSize="10" textAnchor="end">{g}%</text>
+            </g>
+          ))}
+          {/* grades verticais + labels °C */}
+          {[20, 40, 60, 80, 100].map((tp) => (
+            <text key={tp} x={xToPx(tp)} y={H - padB + 16} fill={t.textFaint} fontSize="10" textAnchor="middle">{tp}°</text>
+          ))}
+          {/* linha vertical da temperatura atual */}
+          <line x1={xToPx(curTemp)} y1={padT} x2={xToPx(curTemp)} y2={H - padB}
+            stroke={ACCENT.orange} strokeWidth="1.5" strokeDasharray="4 4" />
+          {/* área + linha da curva */}
+          <path d={`${path} L ${xToPx(sorted[sorted.length - 1][0])} ${H - padB} L ${xToPx(sorted[0][0])} ${H - padB} Z`}
+            fill={`${ACCENT.blue}22`} />
+          <path d={path} fill="none" stroke={ACCENT.blue} strokeWidth="2.5" />
+          {/* pontos com rótulo */}
+          {points.map((p, i) => (
+            <g key={i}>
+              <circle cx={xToPx(p[0])} cy={yToPx(p[1])} r="7" fill={ACCENT.blue} stroke="#fff" strokeWidth="2"
+                style={{ cursor: "grab" }} onMouseDown={() => (dragging.current = i)} />
+              <text x={xToPx(p[0])} y={yToPx(p[1]) - 12} fill={t.text} fontSize="10" textAnchor="middle" fontWeight="700">{p[1]}%</text>
+            </g>
+          ))}
+        </svg>
+
+        {/* campos editáveis por ponto */}
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 12, color: t.textDim, marginBottom: 10 }}>
+            Pontos de controle — arraste no gráfico ou edite abaixo:
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${points.length}, 1fr)`, gap: 8 }}>
+            {points.map((p, i) => (
+              <div key={i} style={{ background: t.panel, borderRadius: 10, padding: 10, textAlign: "center" }}>
+                <div style={{ fontSize: 10, color: t.textFaint, fontWeight: 700, marginBottom: 6 }}>Ponto {i + 1}</div>
+                <div style={{ fontSize: 9, color: t.textFaint }}>Temp °C</div>
+                <input type="number" value={p[0]} onChange={(e) => editPoint(i, 0, e.target.value)}
+                  style={{ width: "100%", background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 6,
+                    color: ACCENT.orange, textAlign: "center", fontWeight: 700, padding: "4px 0", marginBottom: 6 }} />
+                <div style={{ fontSize: 9, color: t.textFaint }}>Fan %</div>
+                <input type="number" value={p[1]} onChange={(e) => editPoint(i, 1, e.target.value)}
+                  style={{ width: "100%", background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 6,
+                    color: ACCENT.blue, textAlign: "center", fontWeight: 700, padding: "4px 0" }} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 20 }}>
+          <button onClick={onClose} style={{ padding: "10px 18px", borderRadius: 10, border: `1px solid ${t.stroke}`,
+            background: "transparent", color: t.textDim, fontWeight: 700, cursor: "pointer" }}>Cancelar</button>
+          <button onClick={onClose} style={{ padding: "10px 20px", borderRadius: 10, border: "none",
+            background: ACCENT.blue, color: "#fff", fontWeight: 700, cursor: "pointer" }}>Aplicar curva</button>
+        </div>
       </div>
     </div>
   );
