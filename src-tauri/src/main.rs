@@ -471,6 +471,44 @@ fn get_fans() -> Vec<FanDto> {
         .collect()
 }
 
+#[derive(Serialize)]
+struct CurvePointOut {
+    temp: f64,
+    pct: f64,
+}
+
+#[derive(Serialize)]
+struct FanModeDto {
+    fan_id: String,
+    mode: String,           // "auto" | "manual" | "max" | "curve"
+    manual_pct: i32,
+    curve: Vec<CurvePointOut>,
+}
+
+/// Retorna o modo atual de cada fan que o controlador está mantendo. O frontend
+/// chama isso ao montar a tela pra restaurar o estado real (senão, ao sair e
+/// voltar, mostraria "auto" mesmo com uma curva ativa por baixo).
+#[tauri::command]
+fn get_fan_modes(ctrl: tauri::State<SharedFanController>) -> Vec<FanModeDto> {
+    let guard = ctrl.lock().unwrap();
+    guard
+        .fans
+        .iter()
+        .map(|(id, f)| FanModeDto {
+            fan_id: id.clone(),
+            mode: match f.mode {
+                FanMode::Auto => "auto",
+                FanMode::Manual => "manual",
+                FanMode::Max => "max",
+                FanMode::Curve => "curve",
+            }
+            .to_string(),
+            manual_pct: f.manual_pct,
+            curve: f.curve.iter().map(|p| CurvePointOut { temp: p.temp, pct: p.pct }).collect(),
+        })
+        .collect()
+}
+
 /// Detecta se um chip é de GPU pelo nome.
 fn chip_is_gpu(chip: &str) -> bool {
     let c = chip.to_lowercase();
@@ -532,13 +570,10 @@ fn set_fan_auto(
     pwm_enable_path: String,
     chip: String,
 ) -> Result<(), String> {
-    let is_gpu = chip_is_gpu(&chip);
-    if is_gpu {
-        // GPU: devolve o controle pro driver (modo 2)
-        hwmon::set_fan_auto(&pwm_enable_path)?;
-    }
-    // CPU: NÃO usa o SmartFan do chip (usa sensor errado). A thread de controle
-    // por software vai regular pela temperatura real da CPU. Só registramos o modo.
+    // Tanto CPU quanto GPU em "auto" são controlados por SOFTWARE pela thread:
+    // - CPU: SmartFan do nct6779 usa sensor errado
+    // - GPU: o auto do driver oscila (27-49%); nossa curva padrão é suave
+    // Só registramos o modo; a thread aplica a curva padrão continuamente.
     upsert_fan(&ctrl, &fan_id, &pwm_path, &Some(pwm_enable_path), &chip, |f| {
         f.mode = FanMode::Auto;
     });
@@ -679,6 +714,7 @@ fn main() {
             get_memory_slots,
             get_memory_slots_root,
             get_fans,
+            get_fan_modes,
             set_fan,
             set_fan_auto,
             set_fan_curve,

@@ -693,6 +693,19 @@ function FansPage({ t, tr }) {
       .then((list) => setFans((list || []).slice().sort((a, b) => a.id.localeCompare(b.id))))
       .catch(() => setFans([]));
   }, []);
+  // Restaura o estado REAL que o backend mantém (modo + manual + curva),
+  // pra que sair e voltar da tela não "esqueça" que havia uma curva/modo ativo.
+  useEffect(() => {
+    invoke("get_fan_modes").then((list) => {
+      const m = {}, mp = {};
+      (list || []).forEach((fm) => {
+        m[fm.fan_id] = fm.mode;
+        if (fm.manual_pct != null) mp[fm.fan_id] = fm.manual_pct;
+      });
+      setModes(m);
+      setManualPct((prev) => ({ ...mp, ...prev }));
+    }).catch(() => {});
+  }, []);
   useEffect(() => { load(); const iv = setInterval(load, 2000); return () => clearInterval(iv); }, [load]);
   if (fans === null) return <Loading t={t} />;
   if (fans.length === 0) return <Empty t={t} msg={tr("no_fans")} />;

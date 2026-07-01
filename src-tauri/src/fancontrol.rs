@@ -53,6 +53,25 @@ pub struct FanController {
 
 pub type SharedFanController = Arc<Mutex<FanController>>;
 
+/// Curva padrão da GPU (auto por software, suave, sem os picos do driver):
+/// <40°C→30%, 50°C→40%, 65°C→60%, 75°C→80%, 85°C+→100%.
+fn gpu_default_pct(temp: f64) -> i32 {
+    let pct = if temp < 40.0 {
+        30.0
+    } else if temp < 50.0 {
+        30.0 + (temp - 40.0) * 1.0 // 30→40
+    } else if temp < 65.0 {
+        40.0 + (temp - 50.0) * 1.33 // 40→60
+    } else if temp < 75.0 {
+        60.0 + (temp - 65.0) * 2.0 // 60→80
+    } else if temp < 85.0 {
+        80.0 + (temp - 75.0) * 2.0 // 80→100
+    } else {
+        100.0
+    };
+    pct.round() as i32
+}
+
 /// Curva padrão da CPU (do comentário da v2.0):
 /// 30°C→45%, 50°C→60%, 65°C→80%, 75°C→90%, 85°C→100%.
 fn cpu_default_pct(temp: f64) -> i32 {
@@ -172,9 +191,13 @@ pub fn spawn_control_thread(controller: SharedFanController) {
                     }
                     FanMode::Auto => {
                         if fan.is_gpu {
-                            // GPU em auto: deixa o driver controlar (não interfere).
-                            // O modo automático da GPU (enable=2) é setado pelo comando,
-                            // não aqui — aqui apenas não mexemos.
+                            // GPU em auto: controla por SOFTWARE com uma curva padrão suave,
+                            // em vez de devolver pro driver (que fica oscilando 27-49%).
+                            // Curva GPU padrão: <40°C→30%, 50→40%, 65→60%, 75→80%, 85+→100%.
+                            if gpu_t > 0.0 {
+                                let pct = gpu_default_pct(gpu_t);
+                                write_pwm(&fan.pwm_path, &fan.pwm_enable_path, pct_to_pwm(pct));
+                            }
                         } else {
                             // CPU em auto: controle por software com curva padrão,
                             // porque o SmartFan do nct6779 usa sensor errado.

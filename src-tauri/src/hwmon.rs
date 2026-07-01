@@ -162,6 +162,7 @@ pub fn set_fan_speed(pwm_path: &str, pwm_enable_path: Option<&str>, speed_percen
 }
 
 /// Equivalente a set_fan_auto(): tenta modo 2 (SmartFan), faz fallback pra modo 0 (BIOS).
+#[allow(dead_code)]
 pub fn set_fan_auto(pwm_enable_path: &str) -> Result<(), String> {
     if !PathBuf::from(pwm_enable_path).exists() {
         return Err(format!("{pwm_enable_path} não existe"));
