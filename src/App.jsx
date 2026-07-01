@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import fanBlade from "./assets/fan-blade.webp";
+import { STRINGS, detectLang } from "./i18n";
 import {
   AreaChart, Area, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Cell,
 } from "recharts";
 import {
   LayoutDashboard, Cpu, MemoryStick, HardDrive, Fan, Zap,
   Trash2, Gauge, Info, Sun, Moon, Activity, Usb, Database,
-  ArrowDown, ArrowUp,
+  ArrowDown, ArrowUp, Minus, Square, X,
 } from "lucide-react";
 
 // ---------- temas ----------
@@ -27,15 +29,15 @@ const ACCENT = {
 };
 
 const NAV = [
-  { id: "overview", label: "Visão Geral", icon: LayoutDashboard, accent: ACCENT.blue },
-  { id: "cpu", label: "CPU", icon: Cpu, accent: ACCENT.orange },
-  { id: "memory", label: "Memória", icon: MemoryStick, accent: ACCENT.green },
-  { id: "disks", label: "Discos", icon: HardDrive, accent: ACCENT.cyan },
-  { id: "fans", label: "Fans", icon: Fan, accent: ACCENT.cyan },
-  { id: "energy", label: "Energia", icon: Zap, accent: ACCENT.orange },
-  { id: "cleaner", label: "Limpeza", icon: Trash2, accent: ACCENT.red },
-  { id: "tune", label: "Ajuste", icon: Gauge, accent: ACCENT.purple },
-  { id: "about", label: "Sobre", icon: Info, accent: ACCENT.textDim },
+  { id: "overview", key: "nav_overview", icon: LayoutDashboard, accent: ACCENT.blue },
+  { id: "cpu", key: "nav_cpu", icon: Cpu, accent: ACCENT.orange },
+  { id: "memory", key: "nav_memory", icon: MemoryStick, accent: ACCENT.green },
+  { id: "disks", key: "nav_disks", icon: HardDrive, accent: ACCENT.cyan },
+  { id: "fans", key: "nav_fans", icon: Fan, accent: ACCENT.cyan },
+  { id: "energy", key: "nav_energy", icon: Zap, accent: ACCENT.orange },
+  { id: "cleaner", key: "nav_cleaner", icon: Trash2, accent: ACCENT.red },
+  { id: "tune", key: "nav_tune", icon: Gauge, accent: ACCENT.purple },
+  { id: "about", key: "nav_about", icon: Info, accent: ACCENT.textDim },
 ];
 
 const HISTORY = 40;
@@ -89,10 +91,12 @@ function CoreCell({ t, core }) {
 // ---------- app ----------
 export default function App() {
   const [dark, setDark] = useState(true);
+  const [lang, setLang] = useState(detectLang());
   const [active, setActive] = useState("overview");
   const [snap, setSnap] = useState(null);
   const [sysInfo, setSysInfo] = useState(null);
   const t = dark ? THEMES.dark : THEMES.light;
+  const tr = (key) => STRINGS[lang][key] || STRINGS.en[key] || key;
 
   // históricos pra sparklines
   const cpuHist = useRef([]);
@@ -144,7 +148,7 @@ export default function App() {
               display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
               <n.icon size={20} color={on ? n.accent : t.textDim} />
               <span style={{ fontSize: 10, color: on ? n.accent : t.textFaint, fontWeight: on ? 700 : 500 }}>
-                {n.label}
+                {tr(n.key)}
               </span>
             </button>
           );
@@ -153,46 +157,77 @@ export default function App() {
 
       {/* Main */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <div style={{ height: 60, borderBottom: `1px solid ${t.stroke}`, display: "flex",
-          alignItems: "center", justifyContent: "space-between", padding: "0 26px" }}>
-          <div>
+        <div data-tauri-drag-region style={{ height: 60, borderBottom: `1px solid ${t.stroke}`, display: "flex",
+          alignItems: "center", justifyContent: "space-between", padding: "0 16px 0 26px" }}>
+          <div data-tauri-drag-region>
             <div style={{ fontSize: 18, fontWeight: 800 }}>MachCtrl</div>
             <div style={{ fontSize: 11, color: t.textFaint }}>
-              {sysInfo ? `${sysInfo.hostname} · ${sysInfo.distro} · Uptime ${sysInfo.uptime}` : "carregando…"}
+              {sysInfo ? `${sysInfo.hostname} · ${sysInfo.distro} · ${tr("uptime")} ${sysInfo.uptime}` : "…"}
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12,
               color: snap ? ACCENT.green : t.textFaint }}>
               <div style={{ width: 8, height: 8, borderRadius: 4, background: snap ? ACCENT.green : t.textFaint }} />
-              {snap ? "Conectado" : "…"}
+              {snap ? tr("connected") : "…"}
             </div>
-            <button onClick={() => setDark((d) => !d)} style={{ width: 36, height: 36, borderRadius: 10,
+            {/* seletor de idioma */}
+            <button onClick={() => setLang((l) => (l === "pt-BR" ? "en" : "pt-BR"))} style={{
+              height: 32, padding: "0 10px", borderRadius: 8, border: `1px solid ${t.stroke}`,
+              background: t.card, cursor: "pointer", color: t.textDim, fontWeight: 700, fontSize: 12 }}>
+              {lang === "pt-BR" ? "PT" : "EN"}
+            </button>
+            {/* tema */}
+            <button onClick={() => setDark((d) => !d)} style={{ width: 32, height: 32, borderRadius: 8,
               border: `1px solid ${t.stroke}`, background: t.card, cursor: "pointer",
               display: "grid", placeItems: "center" }}>
-              {dark ? <Sun size={16} color={t.textDim} /> : <Moon size={16} color={t.textDim} />}
+              {dark ? <Sun size={15} color={t.textDim} /> : <Moon size={15} color={t.textDim} />}
             </button>
+            {/* controles de janela estilo v2.0 */}
+            <WindowControls t={t} />
           </div>
         </div>
 
         <div style={{ flex: 1, overflow: "auto", padding: 24 }}>
-          {active === "overview" && <Overview t={t} snap={snap} sysInfo={sysInfo} cpuHist={cpuHist.current} ramHist={ramHist.current} gpuHist={gpuHist.current} />}
-          {active === "cpu" && <CpuPage t={t} snap={snap} />}
-          {active === "memory" && <MemoryPage t={t} snap={snap} />}
-          {active === "disks" && <DisksPage t={t} snap={snap} />}
-          {active === "fans" && <FansPage t={t} />}
-          {active === "energy" && <EnergyPage t={t} />}
-          {active === "cleaner" && <CleanerPage t={t} />}
-          {active === "tune" && <Placeholder t={t} title="Ajuste" msg="Otimizações do sistema — em construção. Vamos montar essa tela juntos na próxima etapa." />}
-          {active === "about" && <AboutPage t={t} sysInfo={sysInfo} />}
+          {active === "overview" && <Overview t={t} tr={tr} snap={snap} sysInfo={sysInfo} cpuHist={cpuHist.current} ramHist={ramHist.current} gpuHist={gpuHist.current} />}
+          {active === "cpu" && <CpuPage t={t} tr={tr} snap={snap} />}
+          {active === "memory" && <MemoryPage t={t} tr={tr} snap={snap} />}
+          {active === "disks" && <DisksPage t={t} tr={tr} snap={snap} />}
+          {active === "fans" && <FansPage t={t} tr={tr} />}
+          {active === "energy" && <EnergyPage t={t} tr={tr} />}
+          {active === "cleaner" && <CleanerPage t={t} tr={tr} />}
+          {active === "tune" && <Placeholder t={t} title={tr("tune_title")} msg={tr("tune_msg")} />}
+          {active === "about" && <AboutPage t={t} tr={tr} sysInfo={sysInfo} />}
         </div>
       </div>
     </div>
   );
 }
 
+// Controles de janela (minimizar / maximizar / fechar) estilo v2.0.
+function WindowControls({ t }) {
+  const win = getCurrentWindow();
+  const btn = (onClick, children, hoverBg) => (
+    <button onClick={onClick} style={{
+      width: 30, height: 30, borderRadius: 8, border: "none", background: "transparent",
+      cursor: "pointer", display: "grid", placeItems: "center", color: t.textDim,
+    }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = hoverBg || t.card)}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+      {children}
+    </button>
+  );
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 2, marginLeft: 4 }}>
+      {btn(() => win.minimize(), <Minus size={15} />)}
+      {btn(() => win.toggleMaximize(), <Square size={12} />)}
+      {btn(() => win.close(), <X size={16} />, "#ef4444")}
+    </div>
+  );
+}
+
 // ---------- páginas ----------
-function Overview({ t, snap, sysInfo, cpuHist, ramHist, gpuHist }) {
+function Overview({ t, tr, snap, sysInfo, cpuHist, ramHist, gpuHist }) {
   if (!snap) return <Loading t={t} />;
   const gpu = snap.gpus[0];
   const barData = snap.top_procs.slice(0, 6).map((p) => ({ name: p.name, mb: Math.round(p.rss_mb) }));
@@ -209,17 +244,17 @@ function Overview({ t, snap, sysInfo, cpuHist, ramHist, gpuHist }) {
           </span>
         </div>
         <div style={{ fontSize: 13, color: t.textFaint, marginBottom: 18 }}>
-          {[sysInfo?.distro, sysInfo?.kernel && `Kernel ${sysInfo.kernel}`, sysInfo?.install_date && sysInfo.install_date !== "—" && `Instalado em ${sysInfo.install_date}`]
+          {[sysInfo?.distro, sysInfo?.kernel && `${tr("kernel")} ${sysInfo.kernel}`, sysInfo?.install_date && sysInfo.install_date !== "—" && `${tr("installed_on")} ${sysInfo.install_date}`]
             .filter(Boolean).join(" · ")}
         </div>
         <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: "20px 24px",
           display: "grid", gridTemplateColumns: "1fr 1fr", rowGap: 18, columnGap: 40 }}>
-          <InfoField t={t} k="PROCESSADOR" v={sysInfo?.cpu_model || snap.sockets[0]?.model || "—"} />
-          <InfoField t={t} k="GPU" v={sysInfo?.gpu_name || "—"} />
-          <InfoField t={t} k="MEMÓRIA" v={sysInfo ? `${sysInfo.mem_total_gb.toFixed(0)} GB RAM` : "—"} />
-          <InfoField t={t} k="ARMAZENAMENTO" v={sysInfo?.storage_total_gb ? `${storageHuman(sysInfo.storage_total_gb)}` : "—"} />
-          <InfoField t={t} k="PLACA-MÃE" v={sysInfo?.motherboard || "—"} />
-          <InfoField t={t} k="BIOS" v={sysInfo?.bios || "—"} />
+          <InfoField t={t} k={tr("processor")} v={sysInfo?.cpu_model || snap.sockets[0]?.model || "—"} />
+          <InfoField t={t} k={tr("gpu")} v={sysInfo?.gpu_name || "—"} />
+          <InfoField t={t} k={tr("memory")} v={sysInfo ? `${sysInfo.mem_total_gb.toFixed(0)} GB RAM` : "—"} />
+          <InfoField t={t} k={tr("storage")} v={sysInfo?.storage_total_gb ? `${storageHuman(sysInfo.storage_total_gb)}` : "—"} />
+          <InfoField t={t} k={tr("motherboard")} v={sysInfo?.motherboard || "—"} />
+          <InfoField t={t} k={tr("bios")} v={sysInfo?.bios || "—"} />
         </div>
       </div>
 
@@ -233,23 +268,23 @@ function Overview({ t, snap, sysInfo, cpuHist, ramHist, gpuHist }) {
           <div style={{ marginTop: -4 }}><Sparkline data={cpuHist} color={ACCENT.blue} /></div>
           <div style={{ fontSize: 12, color: t.textFaint, lineHeight: 1.4 }}>{snap.sockets[0]?.model || "CPU"}</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 2 }}>
-            <MiniStat t={t} k="Sockets" v={`${snap.sockets.length}`} />
-            <MiniStat t={t} k="Threads" v={`${snap.sockets.reduce((a, s) => a + s.threads, 0)}`} />
-            <MiniStat t={t} k="Temp" v={snap.cpu_temp_c != null ? `${snap.cpu_temp_c.toFixed(0)}°C` : "—"} c={ACCENT.green} />
-            <MiniStat t={t} k="Freq" v={`${(snap.cpu_freq_mhz / 1000).toFixed(2)} GHz`} />
+            <MiniStat t={t} k={tr("sockets")} v={`${snap.sockets.length}`} />
+            <MiniStat t={t} k={tr("threads")} v={`${snap.sockets.reduce((a, s) => a + s.threads, 0)}`} />
+            <MiniStat t={t} k={tr("temp")} v={snap.cpu_temp_c != null ? `${snap.cpu_temp_c.toFixed(0)}°C` : "—"} c={ACCENT.green} />
+            <MiniStat t={t} k={tr("freq")} v={`${(snap.cpu_freq_mhz / 1000).toFixed(2)} GHz`} />
           </div>
         </div>
 
         {/* Memória */}
         <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: 20,
           display: "flex", flexDirection: "column", gap: 12 }}>
-          <CardHead t={t} icon={MemoryStick} accent={ACCENT.green} title="MEMÓRIA" />
+          <CardHead t={t} icon={MemoryStick} accent={ACCENT.green} title={tr("memory")} />
           <BigValue t={t} value={snap.mem_pct.toFixed(0)} unit="%" />
           <div style={{ marginTop: -4 }}><Sparkline data={ramHist} color={ACCENT.green} /></div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 2 }}>
-            <MiniStat t={t} k="Em uso" v={`${snap.mem_used_gb.toFixed(1)} GB`} c={ACCENT.green} />
-            <MiniStat t={t} k="Livre" v={`${(snap.mem_total_gb - snap.mem_used_gb).toFixed(1)} GB`} />
-            <MiniStat t={t} k="Total" v={`${snap.mem_total_gb.toFixed(1)} GB`} />
+            <MiniStat t={t} k={tr("in_use")} v={`${snap.mem_used_gb.toFixed(1)} GB`} c={ACCENT.green} />
+            <MiniStat t={t} k={tr("free")} v={`${(snap.mem_total_gb - snap.mem_used_gb).toFixed(1)} GB`} />
+            <MiniStat t={t} k={tr("total")} v={`${snap.mem_total_gb.toFixed(1)} GB`} />
           </div>
         </div>
 
@@ -263,15 +298,15 @@ function Overview({ t, snap, sysInfo, cpuHist, ramHist, gpuHist }) {
               <div style={{ marginTop: -4 }}><Sparkline data={gpuHist} color={ACCENT.purple} /></div>
               <div style={{ fontSize: 12, color: t.textFaint, lineHeight: 1.4 }}>{gpu.name}</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 2 }}>
-                <MiniStat t={t} k="Temp" v={gpu.temp_c != null ? `${gpu.temp_c.toFixed(0)}°C` : "—"} c={ACCENT.green} />
-                {gpu.fan_rpm != null && <MiniStat t={t} k="Fan" v={`${gpu.fan_rpm} RPM`} />}
+                <MiniStat t={t} k={tr("temp")} v={gpu.temp_c != null ? `${gpu.temp_c.toFixed(0)}°C` : "—"} c={ACCENT.green} />
+                {gpu.fan_rpm != null && <MiniStat t={t} k={tr("fan")} v={`${gpu.fan_rpm} RPM`} />}
                 {gpu.vram_total_mb != null && (
                   <MiniStat t={t} k="VRAM" v={`${(gpu.vram_used_mb / 1024).toFixed(1)}/${(gpu.vram_total_mb / 1024).toFixed(1)} GB`} c={ACCENT.purple} />
                 )}
               </div>
               {vramPct != null && (
                 <div style={{ marginTop: 2 }}>
-                  <div style={{ fontSize: 10, color: t.textFaint, marginBottom: 4 }}>USO DE VRAM · {vramPct.toFixed(0)}%</div>
+                  <div style={{ fontSize: 10, color: t.textFaint, marginBottom: 4 }}>{tr("vram_usage")} · {vramPct.toFixed(0)}%</div>
                   <div style={{ height: 6, background: t.panel, borderRadius: 3, overflow: "hidden" }}>
                     <div style={{ height: "100%", width: `${vramPct}%`, background: ACCENT.purple, borderRadius: 3 }} />
                   </div>
@@ -279,7 +314,7 @@ function Overview({ t, snap, sysInfo, cpuHist, ramHist, gpuHist }) {
               )}
             </>
           ) : (
-            <div style={{ color: t.textFaint, fontSize: 13, padding: "20px 0", textAlign: "center" }}>Nenhuma GPU detectada</div>
+            <div style={{ color: t.textFaint, fontSize: 13, padding: "20px 0", textAlign: "center" }}>{tr("no_gpu")}</div>
           )}
         </div>
       </div>
@@ -287,7 +322,7 @@ function Overview({ t, snap, sysInfo, cpuHist, ramHist, gpuHist }) {
       {/* Processos + Rede */}
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 18 }}>
         <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: 20 }}>
-          <div style={{ color: t.textDim, fontSize: 13, fontWeight: 600, marginBottom: 14 }}>TOP PROCESSOS (RAM)</div>
+          <div style={{ color: t.textDim, fontSize: 13, fontWeight: 600, marginBottom: 14 }}>{tr("top_procs")}</div>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={barData} layout="vertical" margin={{ left: 20 }}>
               <XAxis type="number" hide />
@@ -301,18 +336,18 @@ function Overview({ t, snap, sysInfo, cpuHist, ramHist, gpuHist }) {
         </div>
         <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: 20,
           display: "flex", flexDirection: "column", gap: 14 }}>
-          <div style={{ color: t.textDim, fontSize: 13, fontWeight: 600 }}>REDE</div>
-          {snap.net.length === 0 && <span style={{ color: t.textFaint, fontSize: 13 }}>Nenhuma interface</span>}
+          <div style={{ color: t.textDim, fontSize: 13, fontWeight: 600 }}>{tr("network")}</div>
+          {snap.net.length === 0 && <span style={{ color: t.textFaint, fontSize: 13 }}>{tr("no_iface")}</span>}
           {snap.net.map((n) => (
             <div key={n.name}>
               <div style={{ fontSize: 12, color: t.textFaint, marginBottom: 6 }}>{n.name}</div>
               <div style={{ display: "flex", gap: 10 }}>
                 <div style={{ flex: 1, background: t.panel, borderRadius: 10, padding: "10px 12px" }}>
-                  <div style={{ fontSize: 10, color: t.textFaint }}>↓ DOWNLOAD</div>
+                  <div style={{ fontSize: 10, color: t.textFaint }}>↓ {tr("download")}</div>
                   <div style={{ fontSize: 16, fontWeight: 700, color: ACCENT.blue }}>{n.down_kb.toFixed(0)} KB/s</div>
                 </div>
                 <div style={{ flex: 1, background: t.panel, borderRadius: 10, padding: "10px 12px" }}>
-                  <div style={{ fontSize: 10, color: t.textFaint }}>↑ UPLOAD</div>
+                  <div style={{ fontSize: 10, color: t.textFaint }}>↑ {tr("upload")}</div>
                   <div style={{ fontSize: 16, fontWeight: 700, color: ACCENT.green }}>{n.up_kb.toFixed(0)} KB/s</div>
                 </div>
               </div>
@@ -366,7 +401,7 @@ function MiniStat({ t, k, v, c }) {
   );
 }
 
-function CpuPage({ t, snap }) {
+function CpuPage({ t, tr, snap }) {
   if (!snap) return <Loading t={t} />;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
@@ -386,14 +421,14 @@ function CpuPage({ t, snap }) {
               <div>
                 <div style={{ fontWeight: 700, fontSize: 15 }}>{s.model}</div>
                 <div style={{ color: t.textFaint, fontSize: 12 }}>
-                  {s.phys_cores} núcleos · {s.threads} threads · {s.freq_ghz.toFixed(2)} GHz
+                  {s.phys_cores} {tr("cores")} · {s.threads} threads · {s.freq_ghz.toFixed(2)} GHz
                 </div>
               </div>
             </div>
             <div style={{ display: "flex", gap: 30 }}>
-              {[["USO MÉDIO", `${s.usage_pct.toFixed(0)}%`, ACCENT.blue],
-                ["PACKAGE", s.package_temp_c != null ? `${s.package_temp_c.toFixed(0)}°C` : "—", ACCENT.green],
-                ["FREQ", `${s.freq_ghz.toFixed(2)} GHz`, t.textDim]].map(([l, v, c]) => (
+              {[[tr("avg_usage"), `${s.usage_pct.toFixed(0)}%`, ACCENT.blue],
+                [tr("package"), s.package_temp_c != null ? `${s.package_temp_c.toFixed(0)}°C` : "—", ACCENT.green],
+                [tr("freq").toUpperCase(), `${s.freq_ghz.toFixed(2)} GHz`, t.textDim]].map(([l, v, c]) => (
                 <div key={l} style={{ textAlign: "right" }}>
                   <div style={{ fontSize: 10, color: t.textFaint, fontWeight: 600 }}>{l}</div>
                   <div style={{ fontSize: 15, fontWeight: 800, color: c }}>{v}</div>
@@ -405,8 +440,8 @@ function CpuPage({ t, snap }) {
             {s.cores.map((c) => <CoreCell key={c.id} t={t} core={c} />)}
           </div>
           <div style={{ display: "flex", gap: 16, marginTop: 14, fontSize: 11 }}>
-            <span style={{ color: t.textDim }}>▬ Atividade (%)</span>
-            <span style={{ color: ACCENT.orange }}>▮ Temperatura (°C)</span>
+            <span style={{ color: t.textDim }}>▬ {tr("activity")} (%)</span>
+            <span style={{ color: ACCENT.orange }}>▮ {tr("temperature")} (°C)</span>
           </div>
         </div>
       ))}
@@ -414,7 +449,7 @@ function CpuPage({ t, snap }) {
   );
 }
 
-function MemoryPage({ t, snap }) {
+function MemoryPage({ t, tr, snap }) {
   const [mem, setMem] = useState(null);
   const [loadingRoot, setLoadingRoot] = useState(false);
   useEffect(() => { invoke("get_memory_slots").then(setMem).catch(() => setMem({ slots: [], total_slots: 0, occupied_slots: 0 })); }, []);
@@ -457,9 +492,9 @@ function MemoryPage({ t, snap }) {
             <div style={{ height: "100%", width: `${pct}%`, background: ACCENT.green, borderRadius: 4 }} />
           </div>
           <div style={{ display: "flex", gap: 36 }}>
-            <MemHeadStat t={t} k="Total" v={`${snap.mem_total_gb.toFixed(1)} GB`} />
+            <MemHeadStat t={t} k={tr("total")} v={`${snap.mem_total_gb.toFixed(1)} GB`} />
             <MemHeadStat t={t} k="Usado" v={`${snap.mem_used_gb.toFixed(1)} GB`} />
-            <MemHeadStat t={t} k="Livre" v={`${(snap.mem_total_gb - snap.mem_used_gb).toFixed(1)} GB`} />
+            <MemHeadStat t={t} k={tr("free")} v={`${(snap.mem_total_gb - snap.mem_used_gb).toFixed(1)} GB`} />
             {totalSlots > 0 && <MemHeadStat t={t} k="Slots" v={`${slots.length}/${totalSlots}`} c={ACCENT.blue} />}
           </div>
         </div>
@@ -526,7 +561,7 @@ const DISK_TYPES = {
   usb: { label: "USB", color: "#a78bfa", icon: Usb },
 };
 
-function DisksPage({ t, snap }) {
+function DisksPage({ t, tr, snap }) {
   const ioHist = useRef({}); // por device: { read: [], write: [] }
   if (!snap) return <Loading t={t} />;
 
@@ -636,7 +671,7 @@ function FanImage({ rpm, size = 48, color = "#a78bfa" }) {
   );
 }
 
-function FansPage({ t }) {
+function FansPage({ t, tr }) {
   const [fans, setFans] = useState(null);
   const [modes, setModes] = useState({}); // id -> 'auto' | 'manual' | 'max'
   const [manualPct, setManualPct] = useState({}); // id -> valor do slider
@@ -648,7 +683,7 @@ function FansPage({ t }) {
   }, []);
   useEffect(() => { load(); const iv = setInterval(load, 2000); return () => clearInterval(iv); }, [load]);
   if (fans === null) return <Loading t={t} />;
-  if (fans.length === 0) return <Empty t={t} msg="Nenhum fan detectado via /sys/class/hwmon." />;
+  if (fans.length === 0) return <Empty t={t} msg={tr("no_fans")} />;
 
   const setMode = (f, mode) => {
     setModes((m) => ({ ...m, [f.id]: mode }));
@@ -749,12 +784,12 @@ function FansPage({ t }) {
                     background: `${ACCENT.purple}12`, color: ACCENT.purple, fontWeight: 700,
                     fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center",
                     justifyContent: "center", gap: 6 }}>
-                    📈 Curva ativa — clique para editar
+                    📈 {tr("curve_active")}
                   </button>
                 )}
               </>
             ) : (
-              <div style={{ color: t.textFaint, fontSize: 12 }}>Somente leitura (sem controle PWM).</div>
+              <div style={{ color: t.textFaint, fontSize: 12 }}>{tr("read_only")}</div>
             )}
           </div>
         );
@@ -881,7 +916,7 @@ function FanCurveModal({ t, fan, role, displayName, onClose }) {
   );
 }
 
-function EnergyPage({ t }) {
+function EnergyPage({ t, tr }) {
   const [info, setInfo] = useState(null);
   const load = useCallback(() => { invoke("get_profiles").then(setInfo).catch(() => setInfo(null)); }, []);
   useEffect(() => { load(); }, [load]);
@@ -922,7 +957,7 @@ function EnergyPage({ t }) {
   );
 }
 
-function CleanerPage({ t }) {
+function CleanerPage({ t, tr }) {
   const [tasks, setTasks] = useState(null);
   const [results, setResults] = useState({});
   const [running, setRunning] = useState(false);
@@ -954,9 +989,9 @@ function CleanerPage({ t }) {
       <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 16, padding: 20,
         display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
         <div>
-          <div style={{ fontWeight: 800, fontSize: 16 }}>Limpeza do sistema</div>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>{tr("cleanup")}</div>
           <div style={{ color: t.textFaint, fontSize: 13, marginTop: 2 }}>
-            {tasks.length} tarefas de limpeza · remove caches, logs e arquivos temporários
+            {tasks.length} {tr("cleanup_desc")}
           </div>
         </div>
         <button onClick={cleanAll} disabled={running} style={{
@@ -964,7 +999,7 @@ function CleanerPage({ t }) {
           border: "none", background: running ? t.panel : ACCENT.red, color: running ? t.textDim : "#fff",
           fontWeight: 700, fontSize: 14, cursor: running ? "default" : "pointer", whiteSpace: "nowrap" }}>
           <Trash2 size={16} color={running ? t.textDim : "#fff"} />
-          {running ? "Limpando…" : "Limpar tudo"}
+          {running ? tr("cleaning") : tr("clean_all")}
         </button>
       </div>
 
@@ -1004,7 +1039,7 @@ function CleanerPage({ t }) {
   );
 }
 
-function AboutPage({ t, sysInfo }) {
+function AboutPage({ t, tr, sysInfo }) {
   return (
     <div style={{ display: "grid", placeItems: "center", height: "100%" }}>
       <div style={{ textAlign: "center", maxWidth: 420 }}>
