@@ -75,8 +75,9 @@ package() {
 # MachCtrl: permite abrir o app com privilégios sem pedir senha.
 # Necessário para ler slots de memória (dmidecode/SMBIOS) e controlar fans,
 # perfis de energia e demais operações que escrevem em /sys.
-%wheel ALL=(root) NOPASSWD: /opt/machctrl/machctrl
-%sudo  ALL=(root) NOPASSWD: /opt/machctrl/machctrl
+# SETENV permite ao launcher preservar as variáveis gráficas (DISPLAY etc).
+%wheel ALL=(root) NOPASSWD: SETENV: /opt/machctrl/machctrl
+%sudo  ALL=(root) NOPASSWD: SETENV: /opt/machctrl/machctrl
 SUDOERS
     chmod 440 "$pkgdir/etc/sudoers.d/machctrl"
 }
