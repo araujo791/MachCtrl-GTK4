@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import fanIcon from "./assets/fan-icon.webp";
 import fanBlade from "./assets/fan-blade.webp";
 import {
   AreaChart, Area, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Cell,
@@ -623,13 +622,12 @@ function fanRole(f) {
 }
 
 function FanImage({ rpm, size = 48 }) {
-  // moldura fixa + pás girando por cima; velocidade da rotação varia com o RPM
+  // pás girando; velocidade da rotação varia com o RPM
   const dur = rpm > 0 ? Math.max(0.35, 2200 / rpm) : 0;
   return (
     <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
-      <img src={fanIcon} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
       <img src={fanBlade} alt="" style={{
-        position: "absolute", inset: "18%", width: "64%", height: "64%",
+        width: "100%", height: "100%",
         animation: dur ? `spin ${dur}s linear infinite` : "none",
       }} />
     </div>
