@@ -1,0 +1,47 @@
+post_install() {
+    # Carrega o módulo nct6775 (fans da placa-mãe via Super I/O) e garante no boot.
+    modprobe nct6775 2>/dev/null || true
+    if [ ! -f /etc/modules-load.d/nct6775.conf ]; then
+        echo "nct6775" > /etc/modules-load.d/nct6775.conf
+    fi
+
+    # Atualiza caches de ícone e desktop
+    gtk-update-icon-cache /usr/share/icons/hicolor 2>/dev/null || true
+    update-desktop-database /usr/share/applications 2>/dev/null || true
+
+    echo ""
+    echo "  ✅  MachCtrl 3.0 instalado!"
+    echo "  → Abrir pelo menu de apps ou pelo terminal: machctrl"
+    echo "  → O app abre com privilégios automaticamente (sem pedir senha)."
+    echo ""
+}
+
+post_upgrade() {
+    modprobe nct6775 2>/dev/null || true
+    if [ ! -f /etc/modules-load.d/nct6775.conf ]; then
+        echo "nct6775" > /etc/modules-load.d/nct6775.conf
+    fi
+
+    # Se veio da v2.0 (backend Python como serviço), desativa o serviço antigo.
+    if systemctl list-unit-files 2>/dev/null | grep -q machctrl-backend.service; then
+        systemctl stop machctrl-backend.service 2>/dev/null || true
+        systemctl disable machctrl-backend.service 2>/dev/null || true
+    fi
+
+    gtk-update-icon-cache /usr/share/icons/hicolor 2>/dev/null || true
+    update-desktop-database /usr/share/applications 2>/dev/null || true
+
+    echo ""
+    echo "  ✅  MachCtrl atualizado para a versão 3.0 (Rust + Tauri)!"
+    echo "  → A versão 2.0 (Electron/Python) foi substituída."
+    echo ""
+}
+
+post_remove() {
+    gtk-update-icon-cache /usr/share/icons/hicolor 2>/dev/null || true
+    update-desktop-database /usr/share/applications 2>/dev/null || true
+    echo ""
+    echo "  MachCtrl removido."
+    echo "  Regra sudoers em /etc/sudoers.d/machctrl também foi removida."
+    echo ""
+}

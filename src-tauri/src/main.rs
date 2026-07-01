@@ -639,6 +639,32 @@ fn run_clean(task_id: String) -> CleanResultDto {
     }
 }
 
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    // Abre a URL no navegador padrão do usuário. Como o app roda como root
+    // (pkexec), tentamos abrir como o usuário original via SUDO_USER pra não
+    // abrir o navegador na sessão do root.
+    let real_user = std::env::var("SUDO_USER")
+        .or_else(|_| std::env::var("PKEXEC_UID").and_then(|uid| {
+            // resolve o nome do usuário pelo uid, se possível
+            std::process::Command::new("id").args(["-nu", &uid]).output()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .map_err(|_| std::env::VarError::NotPresent)
+        }))
+        .ok()
+        .filter(|u| !u.is_empty() && u != "root");
+
+    let result = if let Some(user) = real_user {
+        // abre como o usuário original (herda o ambiente gráfico dele)
+        std::process::Command::new("sudo")
+            .args(["-u", &user, "xdg-open", &url])
+            .spawn()
+    } else {
+        std::process::Command::new("xdg-open").arg(&url).spawn()
+    };
+    result.map(|_| ()).map_err(|e| format!("erro ao abrir URL: {e}"))
+}
+
 fn main() {
     // Controlador de fans por software (thread que aplica curva/auto por temperatura).
     let fan_ctrl: SharedFanController = Arc::new(Mutex::new(fancontrol::FanController::default()));
@@ -660,6 +686,7 @@ fn main() {
             apply_profile,
             get_clean_tasks,
             run_clean,
+            open_url,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar o MachCtrl");

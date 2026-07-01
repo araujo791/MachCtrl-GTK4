@@ -37,7 +37,7 @@ const NAV = [
   { id: "fans", key: "nav_fans", icon: Fan, accent: ACCENT.cyan },
   { id: "energy", key: "nav_energy", icon: Zap, accent: ACCENT.orange },
   { id: "cleaner", key: "nav_cleaner", icon: Trash2, accent: ACCENT.red },
-  { id: "tune", key: "nav_tune", icon: Gauge, accent: ACCENT.purple },
+  // { id: "tune", key: "nav_tune", icon: Gauge, accent: ACCENT.purple }, // oculto até finalizarmos o Ajuste
   { id: "about", key: "nav_about", icon: Info, accent: ACCENT.textDim },
 ];
 
@@ -1097,12 +1097,11 @@ function AboutPage({ t, tr, sysInfo }) {
           <div style={{ fontSize: 12, color: t.textFaint, marginBottom: 14 }}>
             {tr("support_desc") || "Se este app te ajudou, considere apoiar o desenvolvimento com uma doação."}
           </div>
-          <a href={paypalUrl} target="_blank" rel="noreferrer" style={{
+          <button onClick={() => invoke("open_url", { url: paypalUrl }).catch(() => {})} style={{
             display: "inline-flex", alignItems: "center", gap: 8, padding: "11px 24px", borderRadius: 10,
-            background: "#0070ba", color: "#fff", fontWeight: 700, fontSize: 14, textDecoration: "none" }}>
+            background: "#0070ba", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", border: "none" }}>
             <Heart size={16} color="#fff" fill="#fff" /> {tr("donate") || "Doar via PayPal"}
-          </a>
-          <div style={{ fontSize: 11, color: t.textFaint, marginTop: 12 }}>{paypalEmail}</div>
+          </button>
         </div>
 
         <div style={{ color: t.textFaint, fontSize: 11, marginTop: 20 }}>

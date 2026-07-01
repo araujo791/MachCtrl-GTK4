@@ -1,0 +1,82 @@
+# Maintainer: araujo791 <https://github.com/araujo791>
+pkgname=machctrl
+pkgver=3.0.0
+pkgrel=1
+pkgdesc="Monitor e Otimizador de Hardware para Linux — CPU, GPU, RAM, Fans, Temperatura (Rust + Tauri)"
+arch=('x86_64')
+url="https://github.com/araujo791/MachCtrl-GTK4"
+license=('MIT')
+depends=(
+    'webkit2gtk-4.1'
+    'gtk3'
+    'libappindicator-gtk3'
+    'librsvg'
+    'lm_sensors'
+    'dmidecode'
+    'sudo'
+)
+makedepends=(
+    'git'
+    'rust'
+    'nodejs'
+    'npm'
+)
+optdepends=(
+    'nvidia-utils: suporte a GPU NVIDIA (fan control, temperatura)'
+)
+# Substitui/atualiza a v2.0 (Electron) — mesmo pkgname, versão maior.
+provides=('machctrl')
+conflicts=('machctrl-git' 'machctrl-bin')
+replaces=('machctrl-electron')
+install=machctrl.install
+source=("$pkgname-$pkgver.tar.gz::https://github.com/araujo791/MachCtrl-GTK4/archive/refs/heads/main.tar.gz")
+sha256sums=('SKIP')
+
+# O diretório do tarball do GitHub é <repo>-<branch>
+_srcdir="MachCtrl-GTK4-main"
+
+build() {
+    cd "$srcdir/$_srcdir"
+
+    if ! command -v cargo &>/dev/null; then
+        echo "ERRO: rust/cargo não encontrado. Instale com: sudo pacman -S rust"
+        exit 1
+    fi
+
+    npm install --prefer-offline
+    npm run tauri build -- --bundles deb 2>/dev/null || npm run tauri build
+}
+
+package() {
+    cd "$srcdir/$_srcdir"
+
+    # Binário compilado
+    install -Dm755 "src-tauri/target/release/machctrl" \
+        "$pkgdir/opt/machctrl/machctrl"
+
+    # Launcher que auto-eleva com sudo NOPASSWD
+    install -Dm755 "packaging/machctrl-launcher.sh" \
+        "$pkgdir/usr/bin/machctrl"
+
+    # Ícone
+    install -Dm644 "src/assets/app-icon.png" \
+        "$pkgdir/usr/share/pixmaps/machctrl.png"
+    install -Dm644 "src/assets/app-icon.png" \
+        "$pkgdir/usr/share/icons/hicolor/256x256/apps/machctrl.png"
+
+    # .desktop
+    install -Dm644 "packaging/machctrl.desktop" \
+        "$pkgdir/usr/share/applications/machctrl.desktop"
+
+    # sudoers NOPASSWD: permite executar o binário do MachCtrl como root sem senha.
+    # (escolha do usuário: comodidade em detrimento de segurança)
+    install -dm750 "$pkgdir/etc/sudoers.d"
+    cat > "$pkgdir/etc/sudoers.d/machctrl" << 'SUDOERS'
+# MachCtrl: permite abrir o app com privilégios sem pedir senha.
+# Necessário para ler slots de memória (dmidecode/SMBIOS) e controlar fans,
+# perfis de energia e demais operações que escrevem em /sys.
+%wheel ALL=(root) NOPASSWD: /opt/machctrl/machctrl
+%sudo  ALL=(root) NOPASSWD: /opt/machctrl/machctrl
+SUDOERS
+    chmod 440 "$pkgdir/etc/sudoers.d/machctrl"
+}
