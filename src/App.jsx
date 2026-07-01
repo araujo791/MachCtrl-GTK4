@@ -616,7 +616,9 @@ function fanRole(f) {
   const l = (f.label || "").toLowerCase();
   if (c.includes("amdgpu") || c.includes("nvidia") || c.includes("nouveau") || c.includes("radeon") || l.includes("gpu"))
     return { name: "GPU", color: "#a78bfa" };
-  if (c.includes("k10temp") || c.includes("coretemp") || l.includes("cpu"))
+  // Super I/O da placa-mãe (nct67xx, it87, f71xxx) controlam os coolers de CPU/gabinete.
+  if (c.includes("k10temp") || c.includes("coretemp") || c.startsWith("nct") || c.startsWith("it87")
+    || c.startsWith("f71") || c.includes("cpu") || l.includes("cpu"))
     return { name: "CPU", color: "#fb923c" };
   return { name: "Sistema", color: "#22d3ee" };
 }
@@ -766,13 +768,14 @@ function FansPage({ t }) {
         );
       })}
       {curveModal && (
-        <FanCurveModal t={t} fan={curveModal} role={fanRole(curveModal)} onClose={() => setCurveModal(null)} />
+        <FanCurveModal t={t} fan={curveModal} role={fanRole(curveModal)}
+          displayName={displayNames[curveModal.id]} onClose={() => setCurveModal(null)} />
       )}
     </div>
   );
 }
 
-function FanCurveModal({ t, fan, role, onClose }) {
+function FanCurveModal({ t, fan, role, displayName, onClose }) {
   // Pontos: [temperatura°C, velocidade%]. Editor visual + campos editáveis.
   const [points, setPoints] = useState([
     [30, 30], [50, 40], [65, 60], [75, 80], [85, 100],
@@ -812,7 +815,7 @@ function FanCurveModal({ t, fan, role, onClose }) {
         {/* header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
           <div>
-            <div style={{ fontSize: 17, fontWeight: 800 }}>Curva de Fan — {fan.label}</div>
+            <div style={{ fontSize: 17, fontWeight: 800 }}>Curva de Fan — {displayName || fan.label}</div>
             <div style={{ fontSize: 13, color: t.textFaint, marginTop: 4 }}>
               {role.name}: <span style={{ color: ACCENT.orange, fontWeight: 700 }}>{curTemp}°C</span>
               {" → "}Fan: <span style={{ color: ACCENT.blue, fontWeight: 700 }}>{fan.pct}%</span>
