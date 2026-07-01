@@ -422,40 +422,84 @@ function CpuPage({ t, snap }) {
 }
 
 function MemoryPage({ t, snap }) {
-  const [slots, setSlots] = useState(null);
-  useEffect(() => { invoke("get_memory_slots").then(setSlots).catch(() => setSlots([])); }, []);
+  const [mem, setMem] = useState(null);
+  useEffect(() => { invoke("get_memory_slots").then(setMem).catch(() => setMem({ slots: [], total_slots: 0, occupied_slots: 0 })); }, []);
   if (!snap) return <Loading t={t} />;
+
+  const pct = snap.mem_pct;
+  const R = 42, C = 2 * Math.PI * R;
+  const slots = mem?.slots || [];
+  const totalSlots = mem?.total_slots || slots.length;
+  const emptySlots = Math.max(0, totalSlots - slots.length);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: 22,
-        display: "flex", gap: 40, alignItems: "center" }}>
-        {[["USO", `${snap.mem_pct.toFixed(0)}%`, ACCENT.green],
-          ["USADO", `${snap.mem_used_gb.toFixed(1)} GB`, t.text],
-          ["TOTAL", `${snap.mem_total_gb.toFixed(1)} GB`, t.text]].map(([l, v, c]) => (
-          <div key={l}>
-            <div style={{ fontSize: 10, color: t.textFaint, fontWeight: 600 }}>{l}</div>
-            <div style={{ fontSize: 26, fontWeight: 800, color: c }}>{v}</div>
+      {/* Cabeçalho: donut + números */}
+      <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: 24,
+        display: "flex", gap: 32, alignItems: "center" }}>
+        <svg width="110" height="110" viewBox="0 0 110 110" style={{ flexShrink: 0 }}>
+          <circle cx="55" cy="55" r={R} fill="none" stroke={t.panel} strokeWidth="10" />
+          <circle cx="55" cy="55" r={R} fill="none" stroke={ACCENT.green} strokeWidth="10"
+            strokeDasharray={C} strokeDashoffset={C * (1 - pct / 100)} strokeLinecap="round"
+            transform="rotate(-90 55 55)" style={{ transition: "stroke-dashoffset 0.6s ease" }} />
+          <text x="55" y="52" textAnchor="middle" fill={t.text} fontSize="20" fontWeight="800">{pct.toFixed(0)}%</text>
+          <text x="55" y="68" textAnchor="middle" fill={t.textFaint} fontSize="10">RAM</text>
+        </svg>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 14 }}>
+            <span style={{ fontSize: 32, fontWeight: 800, color: ACCENT.green }}>{snap.mem_used_gb.toFixed(1)}</span>
+            <span style={{ fontSize: 18, color: t.textFaint }}>/ {snap.mem_total_gb.toFixed(1)} GB</span>
           </div>
-        ))}
+          <div style={{ height: 8, background: t.panel, borderRadius: 4, overflow: "hidden", marginBottom: 14 }}>
+            <div style={{ height: "100%", width: `${pct}%`, background: ACCENT.green, borderRadius: 4 }} />
+          </div>
+          <div style={{ display: "flex", gap: 36 }}>
+            <MemHeadStat t={t} k="Total" v={`${snap.mem_total_gb.toFixed(1)} GB`} />
+            <MemHeadStat t={t} k="Usado" v={`${snap.mem_used_gb.toFixed(1)} GB`} />
+            <MemHeadStat t={t} k="Livre" v={`${(snap.mem_total_gb - snap.mem_used_gb).toFixed(1)} GB`} />
+            {totalSlots > 0 && <MemHeadStat t={t} k="Slots" v={`${slots.length}/${totalSlots}`} c={ACCENT.blue} />}
+          </div>
+        </div>
       </div>
+
       <div style={{ color: t.textDim, fontSize: 11, fontWeight: 700, letterSpacing: 0.5 }}>PENTES INSTALADOS</div>
-      {slots === null && <Loading t={t} />}
-      {slots?.length === 0 && <Empty t={t} msg="Não foi possível ler os slots (requer dmidecode com root)." />}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-        {slots?.map((s, i) => (
+      {mem === null && <Loading t={t} />}
+      {mem && slots.length === 0 && totalSlots === 0 && (
+        <Empty t={t} msg="Não foi possível ler os slots de memória. Alguns sistemas exigem rodar com pkexec/root." />
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
+        {slots.map((s, i) => (
           <div key={i} style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 14, padding: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-              <span style={{ fontWeight: 700, fontSize: 13 }}>{s.locator}</span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <span style={{ fontWeight: 800, fontSize: 14 }}>{s.locator}</span>
               <span style={{ color: ACCENT.blue, fontWeight: 700, fontSize: 13 }}>
-                {s.size_gb.toFixed(0)} GB {s.mem_type}
+                {s.size_gb.toFixed(0)} GB {s.mem_type !== "?" ? s.mem_type : ""}
               </span>
             </div>
-            <Row t={t} k="Fabricante" v={s.manufacturer} />
-            <Row t={t} k="Velocidade" v={`${s.speed_mhz} MT/s`} />
-            <Row t={t} k="Voltagem" v={`${s.voltage.toFixed(2)} V`} vc={ACCENT.orange} />
+            {s.manufacturer !== "?" && <Row t={t} k="Fabricante" v={s.manufacturer} />}
+            {s.part_number !== "?" && s.part_number !== "" && <Row t={t} k="Modelo" v={s.part_number} />}
+            {s.speed_mhz > 0 && <Row t={t} k="Velocidade" v={`${s.speed_mhz} MT/s`} vc={ACCENT.cyan} />}
+            {s.voltage > 0 && <Row t={t} k="Voltagem" v={`${s.voltage.toFixed(2)} V`} vc={ACCENT.orange} />}
+          </div>
+        ))}
+        {/* Slots vazios */}
+        {Array.from({ length: emptySlots }).map((_, i) => (
+          <div key={`empty-${i}`} style={{ background: "transparent", border: `1px dashed ${t.stroke}`,
+            borderRadius: 14, padding: 16, display: "grid", placeItems: "center", minHeight: 90 }}>
+            <span style={{ color: t.textFaint, fontSize: 13 }}>Slot vazio</span>
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function MemHeadStat({ t, k, v, c }) {
+  return (
+    <div>
+      <div style={{ fontSize: 10, color: t.textFaint, fontWeight: 600 }}>{k}</div>
+      <div style={{ fontSize: 15, fontWeight: 800, color: c || t.text }}>{v}</div>
     </div>
   );
 }

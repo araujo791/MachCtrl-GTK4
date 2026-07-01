@@ -401,24 +401,38 @@ struct MemSlotDto {
     mem_type: String,
     speed_mhz: i64,
     manufacturer: String,
+    part_number: String,
     voltage: f64,
 }
 
+#[derive(Serialize)]
+struct MemoryDto {
+    total_slots: u32,
+    occupied_slots: u32,
+    slots: Vec<MemSlotDto>,
+}
+
 #[tauri::command]
-fn get_memory_slots() -> Vec<MemSlotDto> {
+fn get_memory_slots() -> MemoryDto {
     let mem = procstat::read_meminfo();
-    memory::get_memory_slots(mem.total_gb)
-        .slots
-        .into_iter()
-        .map(|s| MemSlotDto {
-            locator: s.locator,
-            size_gb: s.size_gb,
-            mem_type: s.mem_type,
-            speed_mhz: s.speed_mhz,
-            manufacturer: s.manufacturer,
-            voltage: s.voltage,
-        })
-        .collect()
+    let info = memory::get_memory_slots(mem.total_gb);
+    MemoryDto {
+        total_slots: info.total_slots,
+        occupied_slots: info.occupied_slots,
+        slots: info
+            .slots
+            .into_iter()
+            .map(|s| MemSlotDto {
+                locator: s.locator,
+                size_gb: s.size_gb,
+                mem_type: s.mem_type,
+                speed_mhz: s.speed_mhz,
+                manufacturer: s.manufacturer,
+                part_number: s.part_number,
+                voltage: s.voltage,
+            })
+            .collect(),
+    }
 }
 
 // ---------------------------------------------------------------------------
