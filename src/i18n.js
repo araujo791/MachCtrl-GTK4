@@ -94,6 +94,11 @@ export const STRINGS = {
     cleanup_desc: "tarefas de limpeza · remove caches, logs e arquivos temporários",
     clean_all: "Limpar tudo",
     cleaning: "Limpando…",
+    total_freed: "TOTAL LIBERADO",
+    // sobre / doação
+    support_project: "Gostou do MachCtrl?",
+    support_desc: "Se este app te ajudou, considere apoiar o desenvolvimento com uma doação.",
+    donate: "Doar via PayPal",
     // ajuste
     tune_title: "Ajuste",
     tune_msg: "Otimizações do sistema — em construção.",
@@ -182,6 +187,10 @@ export const STRINGS = {
     cleanup_desc: "cleanup tasks · removes caches, logs and temporary files",
     clean_all: "Clean all",
     cleaning: "Cleaning…",
+    total_freed: "TOTAL FREED",
+    support_project: "Enjoying MachCtrl?",
+    support_desc: "If this app helped you, consider supporting development with a donation.",
+    donate: "Donate via PayPal",
     tune_title: "Tune",
     tune_msg: "System optimizations — under construction.",
     about_subtitle: "Hardware Monitor and Optimizer for Linux",

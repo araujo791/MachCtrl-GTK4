@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import fanBlade from "./assets/fan-blade.webp";
+import appIcon from "./assets/app-icon.png";
 import { STRINGS, detectLang } from "./i18n";
 import {
   AreaChart, Area, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Cell,
@@ -9,7 +10,7 @@ import {
 import {
   LayoutDashboard, Cpu, MemoryStick, HardDrive, Fan, Zap,
   Trash2, Gauge, Info, Sun, Moon, Activity, Usb, Database,
-  ArrowDown, ArrowUp, Minus, Square, X,
+  ArrowDown, ArrowUp, Minus, Square, X, Heart,
 } from "lucide-react";
 
 // ---------- temas ----------
@@ -139,9 +140,7 @@ export default function App() {
       {/* Sidebar */}
       <div style={{ width: 92, background: t.panel, borderRight: `1px solid ${t.stroke}`,
         display: "flex", flexDirection: "column", alignItems: "center", padding: "18px 0", gap: 4 }}>
-        <div style={{ width: 40, height: 40, borderRadius: 12, marginBottom: 16,
-          background: `linear-gradient(135deg, ${ACCENT.blue}, ${ACCENT.purple})`,
-          display: "grid", placeItems: "center", fontWeight: 800, fontSize: 18, color: "#fff" }}>M</div>
+        <img src={appIcon} alt="MachCtrl" style={{ width: 44, height: 44, borderRadius: 12, marginBottom: 16 }} />
         {NAV.map((n) => {
           const on = active === n.id;
           return (
@@ -376,6 +375,13 @@ function InfoField({ t, k, v }) {
 }
 function storageHuman(gb) {
   return gb >= 1000 ? `${(gb / 1024).toFixed(1)} TB` : `${gb.toFixed(0)} GB`;
+}
+function bytesHuman(bytes) {
+  if (bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let v = bytes, i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(v >= 100 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 function CardHead({ t, icon: Icon, accent, title, badge }) {
   return (
@@ -977,16 +983,19 @@ function CleanerPage({ t, tr }) {
   const [results, setResults] = useState({});
   const [running, setRunning] = useState(false);
   const [currentTask, setCurrentTask] = useState(null);
+  const [totalFreed, setTotalFreed] = useState(0);
   useEffect(() => { invoke("get_clean_tasks").then(setTasks).catch(() => setTasks([])); }, []);
   if (tasks === null) return <Loading t={t} />;
 
   const cleanAll = async () => {
     setRunning(true);
     setResults({});
+    let total = 0;
     for (const task of tasks) {
       setCurrentTask(task.id);
       try {
         const r = await invoke("run_clean", { taskId: task.id });
+        total += r.bytes || 0;
         setResults((prev) => ({ ...prev, [task.id]: {
           ok: r.ok, text: `${r.result}${r.cleaned ? " (" + r.cleaned + ")" : ""}`,
         } }));
@@ -994,6 +1003,7 @@ function CleanerPage({ t, tr }) {
         setResults((prev) => ({ ...prev, [task.id]: { ok: false, text: "Falhou" } }));
       }
     }
+    setTotalFreed(total);
     setCurrentTask(null);
     setRunning(false);
   };
@@ -1009,13 +1019,21 @@ function CleanerPage({ t, tr }) {
             {tasks.length} {tr("cleanup_desc")}
           </div>
         </div>
-        <button onClick={cleanAll} disabled={running} style={{
-          display: "flex", alignItems: "center", gap: 8, padding: "12px 24px", borderRadius: 10,
-          border: "none", background: running ? t.panel : ACCENT.red, color: running ? t.textDim : "#fff",
-          fontWeight: 700, fontSize: 14, cursor: running ? "default" : "pointer", whiteSpace: "nowrap" }}>
-          <Trash2 size={16} color={running ? t.textDim : "#fff"} />
-          {running ? tr("cleaning") : tr("clean_all")}
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          {totalFreed > 0 && !running && (
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 10, color: t.textFaint, fontWeight: 600 }}>{tr("total_freed") || "TOTAL LIBERADO"}</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: ACCENT.green }}>{bytesHuman(totalFreed)}</div>
+            </div>
+          )}
+          <button onClick={cleanAll} disabled={running} style={{
+            display: "flex", alignItems: "center", gap: 8, padding: "12px 24px", borderRadius: 10,
+            border: "none", background: running ? t.panel : ACCENT.red, color: running ? t.textDim : "#fff",
+            fontWeight: 700, fontSize: 14, cursor: running ? "default" : "pointer", whiteSpace: "nowrap" }}>
+            <Trash2 size={16} color={running ? t.textDim : "#fff"} />
+            {running ? tr("cleaning") : tr("clean_all")}
+          </button>
+        </div>
       </div>
 
       {/* Lista de tarefas (sem botões individuais) */}
@@ -1055,16 +1073,40 @@ function CleanerPage({ t, tr }) {
 }
 
 function AboutPage({ t, tr, sysInfo }) {
+  const paypalEmail = "anderson.henrique.araujo@hotmail.com";
+  const paypalUrl = `https://www.paypal.com/donate/?business=${encodeURIComponent(paypalEmail)}&item_name=${encodeURIComponent("Apoie o MachCtrl")}&currency_code=BRL`;
   return (
     <div style={{ display: "grid", placeItems: "center", height: "100%" }}>
-      <div style={{ textAlign: "center", maxWidth: 420 }}>
-        <div style={{ width: 72, height: 72, borderRadius: 20, margin: "0 auto 18px",
-          background: `linear-gradient(135deg, ${ACCENT.blue}, ${ACCENT.purple})`,
-          display: "grid", placeItems: "center", fontSize: 32, fontWeight: 800, color: "#fff" }}>M</div>
-        <div style={{ fontSize: 24, fontWeight: 800 }}>MachCtrl</div>
-        <div style={{ color: t.textDim, fontSize: 14, marginTop: 4 }}>Monitor e Otimizador de Hardware para Linux</div>
-        <div style={{ color: t.textFaint, fontSize: 12, marginTop: 14 }}>
-          v0.1 · Rust + Tauri + React{sysInfo ? ` · ${sysInfo.distro}` : ""}
+      <div style={{ textAlign: "center", maxWidth: 460 }}>
+        <img src={appIcon} alt="MachCtrl" style={{ width: 128, height: 128, borderRadius: 28, margin: "0 auto 20px", display: "block" }} />
+        <div style={{ fontSize: 28, fontWeight: 800 }}>MachCtrl</div>
+        <div style={{ color: t.textDim, fontSize: 14, marginTop: 6 }}>{tr("about_subtitle")}</div>
+        <div style={{ display: "inline-block", marginTop: 14, fontSize: 12, fontWeight: 700, color: ACCENT.blue,
+          background: `${ACCENT.blue}18`, padding: "5px 14px", borderRadius: 20 }}>
+          v3.0.0
+        </div>
+        <div style={{ color: t.textFaint, fontSize: 12, marginTop: 10 }}>
+          Rust + Tauri + React{sysInfo ? ` · ${sysInfo.distro}` : ""}
+        </div>
+
+        {/* Doação */}
+        <div style={{ marginTop: 28, padding: 20, background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
+            {tr("support_project") || "Gostou do MachCtrl?"}
+          </div>
+          <div style={{ fontSize: 12, color: t.textFaint, marginBottom: 14 }}>
+            {tr("support_desc") || "Se este app te ajudou, considere apoiar o desenvolvimento com uma doação."}
+          </div>
+          <a href={paypalUrl} target="_blank" rel="noreferrer" style={{
+            display: "inline-flex", alignItems: "center", gap: 8, padding: "11px 24px", borderRadius: 10,
+            background: "#0070ba", color: "#fff", fontWeight: 700, fontSize: 14, textDecoration: "none" }}>
+            <Heart size={16} color="#fff" fill="#fff" /> {tr("donate") || "Doar via PayPal"}
+          </a>
+          <div style={{ fontSize: 11, color: t.textFaint, marginTop: 12 }}>{paypalEmail}</div>
+        </div>
+
+        <div style={{ color: t.textFaint, fontSize: 11, marginTop: 20 }}>
+          © 2026 Anderson Araújo
         </div>
       </div>
     </div>

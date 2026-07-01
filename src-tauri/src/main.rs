@@ -625,6 +625,7 @@ struct CleanResultDto {
     ok: bool,
     result: String,
     cleaned: Option<String>,
+    bytes: u64,
 }
 
 #[tauri::command]
@@ -634,6 +635,7 @@ fn run_clean(task_id: String) -> CleanResultDto {
         ok: r.success,
         result: r.result,
         cleaned: r.cleaned,
+        bytes: r.bytes,
     }
 }
 

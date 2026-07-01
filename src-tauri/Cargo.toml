@@ -1,6 +1,6 @@
 [package]
 name = "machctrl"
-version = "0.1.0"
+version = "3.0.0"
 description = "Monitor e Otimizador de Hardware para Linux"
 authors = ["araujo791"]
 edition = "2021"
