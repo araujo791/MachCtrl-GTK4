@@ -693,14 +693,16 @@ function FansPage({ t, tr }) {
 
   const setMode = (f, mode) => {
     setModes((m) => ({ ...m, [f.id]: mode }));
+    const base = { fanId: f.id, pwmPath: f.pwm_path, pwmEnablePath: f.pwm_enable_path, chip: f.chip };
     if (mode === "auto") {
-      invoke("set_fan_auto", { pwmEnablePath: f.pwm_enable_path }).catch(() => {});
+      invoke("set_fan_auto", base).catch(() => {});
     } else if (mode === "max") {
-      invoke("set_fan", { pwmPath: f.pwm_path, pwmEnablePath: f.pwm_enable_path, speed: 100 }).catch(() => {});
+      invoke("set_fan", { ...base, speed: 100, max: true }).catch(() => {});
     } else if (mode === "manual") {
       const v = manualPct[f.id] ?? f.pct;
-      invoke("set_fan", { pwmPath: f.pwm_path, pwmEnablePath: f.pwm_enable_path, speed: v }).catch(() => {});
+      invoke("set_fan", { ...base, speed: v, max: false }).catch(() => {});
     }
+    // modo "curve" é aplicado pelo modal (set_fan_curve)
   };
 
   // Pré-computa o nome de exibição de cada fan (CPU 1, GPU, Sistema 2...) de forma
@@ -777,7 +779,7 @@ function FansPage({ t, tr }) {
                   <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                     <input type="range" min="0" max="100" value={manualPct[f.id] ?? f.pct}
                       onChange={(e) => setManualPct((p) => ({ ...p, [f.id]: Number(e.target.value) }))}
-                      onMouseUp={(e) => invoke("set_fan", { pwmPath: f.pwm_path, pwmEnablePath: f.pwm_enable_path, speed: Number(e.target.value) }).catch(() => {})}
+                      onMouseUp={(e) => invoke("set_fan", { fanId: f.id, pwmPath: f.pwm_path, pwmEnablePath: f.pwm_enable_path, chip: f.chip, speed: Number(e.target.value), max: false }).catch(() => {})}
                       style={{ flex: 1, accentColor: ACCENT.blue }} />
                     <span style={{ fontSize: 13, fontWeight: 700, color: ACCENT.blue, minWidth: 40, textAlign: "right" }}>
                       {manualPct[f.id] ?? f.pct}%
@@ -914,7 +916,14 @@ function FanCurveModal({ t, fan, role, displayName, onClose }) {
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 20 }}>
           <button onClick={onClose} style={{ padding: "10px 18px", borderRadius: 10, border: `1px solid ${t.stroke}`,
             background: "transparent", color: t.textDim, fontWeight: 700, cursor: "pointer" }}>Cancelar</button>
-          <button onClick={onClose} style={{ padding: "10px 20px", borderRadius: 10, border: "none",
+          <button onClick={() => {
+            const pts = points.map(([temp, pct]) => ({ temp, pct }));
+            invoke("set_fan_curve", {
+              fanId: fan.id, pwmPath: fan.pwm_path, pwmEnablePath: fan.pwm_enable_path,
+              chip: fan.chip, points: pts,
+            }).catch(() => {});
+            onClose();
+          }} style={{ padding: "10px 20px", borderRadius: 10, border: "none",
             background: ACCENT.blue, color: "#fff", fontWeight: 700, cursor: "pointer" }}>Aplicar curva</button>
         </div>
       </div>

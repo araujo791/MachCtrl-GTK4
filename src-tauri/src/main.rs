@@ -2,15 +2,17 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod cleaner;
+mod fancontrol;
 mod gpu;
 mod hwmon;
 mod memory;
 mod procstat;
 mod profiles;
 
-use serde::Serialize;
+use fancontrol::{CurvePoint, FanControl, FanMode, SharedFanController};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 // ---------------------------------------------------------------------------
 // Estado compartilhado: guarda leituras anteriores pra calcular deltas
@@ -469,14 +471,101 @@ fn get_fans() -> Vec<FanDto> {
         .collect()
 }
 
-#[tauri::command]
-fn set_fan(pwm_path: String, pwm_enable_path: Option<String>, speed: i32) -> Result<(), String> {
-    hwmon::set_fan_speed(&pwm_path, pwm_enable_path.as_deref(), speed)
+/// Detecta se um chip é de GPU pelo nome.
+fn chip_is_gpu(chip: &str) -> bool {
+    let c = chip.to_lowercase();
+    c.contains("amdgpu") || c.contains("nvidia") || c.contains("radeon") || c.contains("nouveau")
+}
+
+/// Registra/atualiza um fan no controlador (cria a entrada se não existir).
+fn upsert_fan<F: FnOnce(&mut FanControl)>(
+    ctrl: &SharedFanController,
+    fan_id: &str,
+    pwm_path: &str,
+    pwm_enable_path: &Option<String>,
+    chip: &str,
+    update: F,
+) {
+    let mut guard = ctrl.lock().unwrap();
+    let entry = guard.fans.entry(fan_id.to_string()).or_insert_with(|| FanControl {
+        pwm_path: pwm_path.to_string(),
+        pwm_enable_path: pwm_enable_path.clone(),
+        chip: chip.to_string(),
+        mode: FanMode::Auto,
+        manual_pct: 50,
+        curve: Vec::new(),
+        is_gpu: chip_is_gpu(chip),
+    });
+    // mantém caminhos atualizados
+    entry.pwm_path = pwm_path.to_string();
+    entry.pwm_enable_path = pwm_enable_path.clone();
+    entry.chip = chip.to_string();
+    entry.is_gpu = chip_is_gpu(chip);
+    update(entry);
 }
 
 #[tauri::command]
-fn set_fan_auto(pwm_enable_path: String) -> Result<(), String> {
-    hwmon::set_fan_auto(&pwm_enable_path)
+fn set_fan(
+    ctrl: tauri::State<SharedFanController>,
+    fan_id: String,
+    pwm_path: String,
+    pwm_enable_path: Option<String>,
+    chip: String,
+    speed: i32,
+    max: Option<bool>,
+) -> Result<(), String> {
+    let is_max = max.unwrap_or(false);
+    // aplica imediatamente (feedback instantâneo) e registra o modo pra a thread reforçar
+    hwmon::set_fan_speed(&pwm_path, pwm_enable_path.as_deref(), speed)?;
+    upsert_fan(&ctrl, &fan_id, &pwm_path, &pwm_enable_path, &chip, |f| {
+        f.mode = if is_max { FanMode::Max } else { FanMode::Manual };
+        f.manual_pct = speed;
+    });
+    Ok(())
+}
+
+#[tauri::command]
+fn set_fan_auto(
+    ctrl: tauri::State<SharedFanController>,
+    fan_id: String,
+    pwm_path: String,
+    pwm_enable_path: String,
+    chip: String,
+) -> Result<(), String> {
+    let is_gpu = chip_is_gpu(&chip);
+    if is_gpu {
+        // GPU: devolve o controle pro driver (modo 2)
+        hwmon::set_fan_auto(&pwm_enable_path)?;
+    }
+    // CPU: NÃO usa o SmartFan do chip (usa sensor errado). A thread de controle
+    // por software vai regular pela temperatura real da CPU. Só registramos o modo.
+    upsert_fan(&ctrl, &fan_id, &pwm_path, &Some(pwm_enable_path), &chip, |f| {
+        f.mode = FanMode::Auto;
+    });
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct CurvePointDto {
+    temp: f64,
+    pct: f64,
+}
+
+#[tauri::command]
+fn set_fan_curve(
+    ctrl: tauri::State<SharedFanController>,
+    fan_id: String,
+    pwm_path: String,
+    pwm_enable_path: Option<String>,
+    chip: String,
+    points: Vec<CurvePointDto>,
+) -> Result<(), String> {
+    let curve: Vec<CurvePoint> = points.into_iter().map(|p| CurvePoint { temp: p.temp, pct: p.pct }).collect();
+    upsert_fan(&ctrl, &fan_id, &pwm_path, &pwm_enable_path, &chip, |f| {
+        f.mode = FanMode::Curve;
+        f.curve = curve;
+    });
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -549,8 +638,13 @@ fn run_clean(task_id: String) -> CleanResultDto {
 }
 
 fn main() {
+    // Controlador de fans por software (thread que aplica curva/auto por temperatura).
+    let fan_ctrl: SharedFanController = Arc::new(Mutex::new(fancontrol::FanController::default()));
+    fancontrol::spawn_control_thread(fan_ctrl.clone());
+
     tauri::Builder::default()
         .manage(SharedState::default())
+        .manage(fan_ctrl)
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
             get_system_info,
@@ -559,6 +653,7 @@ fn main() {
             get_fans,
             set_fan,
             set_fan_auto,
+            set_fan_curve,
             get_profiles,
             apply_profile,
             get_clean_tasks,
