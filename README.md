@@ -1,54 +1,48 @@
-# MachCtrl (GTK4 + libadwaita)
+# MachCtrl
 
-Reescrita completa do [MachCtrl](https://github.com/araujo791/machctrl) (originalmente
-Electron + Python) e da tentativa anterior em [MachCtrl-3.0](https://github.com/araujo791/MachCtrl-3.0)
-(Tauri + React). Esta versão é **Rust puro, sem WebView, sem Node, sem Python** —
-GTK4 + libadwaita direto, igual a apps nativos do GNOME/KDE.
+Monitor e Otimizador de Hardware para Linux — versão nativa com **Rust + Tauri v2 + React**.
 
-## Por que GTK4/libadwaita em vez de Tauri
+Visual dark/light moderno, backend Rust lendo os sensores direto de `/proc` e `/sys`
+(sem `sysinfo`, sem Electron, sem WebView pesado — usa o WebKitGTK do próprio sistema).
 
-| | Electron (2.x) | Tauri (3.0, abandonado) | GTK4 + libadwaita (este) |
-|---|---|---|---|
-| Tamanho do binário | ~272MB | ~20-30MB (estimado, nunca chegou a empacotar) | **~300KB** (linka contra libs já no sistema) |
-| Runtime embutido | Chromium + Node | WebView do sistema + Node no dev | Nenhum — GTK4/libadwaita já fazem parte de qualquer KDE/GNOME |
-| Visual | HTML/CSS (Tailwind) | HTML/CSS (Tailwind) | Nativo (libadwaita = mesmos widgets do GNOME Settings, Nautilus, etc.) |
-| Linguagem do backend | Python (processo separado) | Rust (embutido) | Rust (embutido) |
-| Frontend | React/TS | React/TS (reaproveitado) | Rust (gtk4-rs) |
+## Telas
 
-A migração pro Tauri (ver `MachCtrl-3.0`) chegou a compilar e rodar, mas ainda carregava
-WebKitGTK completo como motor de renderização só pra desenhar a mesma UI que widgets
-nativos do GTK já desenham de fábrica — trocar React por widgets nativos elimina essa
-camada inteira.
+- **Visão Geral** — cards de CPU/Memória/GPU com gráficos ao vivo, Top Processos (RAM) e Rede
+- **CPU** — multi-socket (um card por CPU física), grid de núcleos com atividade + temperatura
+- **Memória** — uso + pentes DIMM (via dmidecode)
+- **Discos** — todas as partições com barra de uso
+- **Fans** — RPM/PWM com slider de controle e modo Auto
+- **Energia** — perfis Economia / Equilibrado / Desempenho
+- **Limpeza** — tarefas de limpeza do sistema
+- **Ajuste** — otimizações do sistema *(em construção)*
 
-## Estado atual
-
-🚧 **Esqueleto inicial.** A janela abre com header bar do libadwaita, mas as telas de
-sensores ainda não foram construídas. Os módulos de leitura de hardware (`src/hwmon.rs`,
-`src/power.rs`, `src/gpu.rs`, `src/cleaner.rs`, `src/profiles.rs`, `src/memory.rs`) foram
-**reaproveitados 1:1** do trabalho já feito no MachCtrl-3.0 — são lógica pura, sem
-dependência de framework de UI, então funcionam aqui sem alteração.
-
-Falta:
-- [ ] Construir as telas (CPU, GPU, Fans, RAM, Limpeza, Perfis) com widgets GTK4/libadwaita
-- [ ] Loop de atualização de 1s ligado à UI (via `glib::timeout_add_seconds` ou canal + `glib::MainContext`)
-- [ ] Portar `network.rs` (ainda não copiado pra este repo — depende de `sysinfo`, que tem
-      restrição de toolchain em sandboxes com Rust antigo; precisa ser validado numa máquina
-      com Rust atual antes de trazer)
-- [ ] Aplicar estilo visual baseado nas prints do app original (aguardando upload das imagens)
-- [ ] `.desktop` file, ícone, PKGBUILD próprio (bem mais simples que o do Electron — sem
-      `electron-builder`, só `cargo build --release` + copiar o binário)
-
-## Build
+## Dependências do sistema (CachyOS / Arch)
 
 ```bash
-sudo pacman -S rust gtk4 libadwaita
-cargo build --release
-./target/release/machctrl
+sudo pacman -S --needed rust nodejs npm webkit2gtk-4.1 base-devel \
+  curl wget file openssl gtk3 libappindicator-gtk3 librsvg
 ```
 
-## Validação feita até agora
+## Rodar em modo desenvolvimento
 
-Compilado e linkado com sucesso neste ambiente (Ubuntu 24.04 + GTK4 4.14 + libadwaita 1.5.0
-via apt), binário final de 344KB, dinamicamente linkado contra `libgtk-4`, `libadwaita-1`,
-`libgobject`, `libcairo`, etc. — nenhuma dessas precisa ser empacotada junto, CachyOS com
-KDE/GNOME já as tem instaladas por outras razões.
+```bash
+npm install
+npm run tauri dev
+```
+
+## Compilar o app final
+
+```bash
+npm install
+npm run tauri build
+```
+
+O binário/pacote sai em `src-tauri/target/release/` (e `bundle/` para .deb/.rpm/AppImage).
+
+## Controle de fans e perfis de energia
+
+Escrevem em `/sys`, então precisam de privilégios:
+
+```bash
+pkexec ./src-tauri/target/release/machctrl
+```

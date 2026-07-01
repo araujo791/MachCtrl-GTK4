@@ -1,2 +1,17 @@
-/target
-Cargo.lock
+# dependencies
+node_modules/
+
+# build outputs
+dist/
+src-tauri/target/
+src-tauri/gen/
+
+# logs
+*.log
+npm-debug.log*
+
+# editor
+.vscode/
+.idea/
+*.swp
+.DS_Store

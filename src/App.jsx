@@ -1,0 +1,555 @@
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import {
+  AreaChart, Area, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Cell,
+} from "recharts";
+import {
+  LayoutDashboard, Cpu, MemoryStick, HardDrive, Fan, Zap,
+  Trash2, Gauge, Info, Sun, Moon, Activity,
+} from "lucide-react";
+
+// ---------- temas ----------
+const THEMES = {
+  dark: {
+    bg: "#0b0d12", panel: "#12151c", card: "#171b24", stroke: "#232936",
+    text: "#e8ebf2", textDim: "#8b93a7", textFaint: "#5a6376",
+  },
+  light: {
+    bg: "#f2f4f8", panel: "#ffffff", card: "#ffffff", stroke: "#e4e8f0",
+    text: "#1a1f2b", textDim: "#5a6376", textFaint: "#9aa3b5",
+  },
+};
+const ACCENT = {
+  blue: "#3b82f6", cyan: "#22d3ee", green: "#34d399",
+  orange: "#fb923c", red: "#f87171", purple: "#a78bfa", pink: "#f472b6",
+};
+
+const NAV = [
+  { id: "overview", label: "Visão Geral", icon: LayoutDashboard, accent: ACCENT.blue },
+  { id: "cpu", label: "CPU", icon: Cpu, accent: ACCENT.orange },
+  { id: "memory", label: "Memória", icon: MemoryStick, accent: ACCENT.green },
+  { id: "disks", label: "Discos", icon: HardDrive, accent: ACCENT.cyan },
+  { id: "fans", label: "Fans", icon: Fan, accent: ACCENT.cyan },
+  { id: "energy", label: "Energia", icon: Zap, accent: ACCENT.orange },
+  { id: "cleaner", label: "Limpeza", icon: Trash2, accent: ACCENT.red },
+  { id: "tune", label: "Ajuste", icon: Gauge, accent: ACCENT.purple },
+  { id: "about", label: "Sobre", icon: Info, accent: ACCENT.textDim },
+];
+
+const HISTORY = 40;
+const tempColor = (tp) => (tp >= 80 ? ACCENT.red : tp >= 65 ? ACCENT.orange : ACCENT.green);
+
+// ---------- pequenos componentes ----------
+function Sparkline({ data, color, height = 48 }) {
+  const d = data.map((v, i) => ({ i, v }));
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <AreaChart data={d} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+        <defs>
+          <linearGradient id={`g-${color}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity={0.35} />
+            <stop offset="100%" stopColor={color} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <Area type="monotone" dataKey="v" stroke={color} strokeWidth={2}
+          fill={`url(#g-${color})`} isAnimationActive={false} />
+      </AreaChart>
+    </ResponsiveContainer>
+  );
+}
+
+function StatCard({ t, title, icon: Icon, accent, value, unit, sub, history }) {
+  return (
+    <div style={{
+      background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18,
+      padding: 20, display: "flex", flexDirection: "column", gap: 14, minHeight: 150,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ width: 34, height: 34, borderRadius: 10, background: `${accent}22`,
+          display: "grid", placeItems: "center" }}>
+          <Icon size={18} color={accent} />
+        </div>
+        <span style={{ color: t.textDim, fontSize: 13, fontWeight: 600 }}>{title}</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+        <span style={{ color: t.text, fontSize: 34, fontWeight: 800, lineHeight: 1 }}>{value}</span>
+        <span style={{ color: t.textDim, fontSize: 16, fontWeight: 600 }}>{unit}</span>
+      </div>
+      <div style={{ marginTop: -6 }}><Sparkline data={history} color={accent} /></div>
+      <span style={{ color: t.textFaint, fontSize: 12 }}>{sub}</span>
+    </div>
+  );
+}
+
+function CoreCell({ t, core }) {
+  const tempFrac = core.temp_c != null ? Math.min(100, ((core.temp_c - 30) / 60) * 100) : 0;
+  return (
+    <div style={{
+      background: t.panel, border: `1px solid ${t.stroke}`, borderRadius: 8,
+      padding: "6px 4px", position: "relative", overflow: "hidden", minHeight: 44,
+    }}>
+      <div style={{ position: "absolute", left: 0, bottom: 0, width: "100%",
+        height: `${core.pct}%`, background: `${ACCENT.blue}22`, transition: "height 1s ease" }} />
+      <div style={{ position: "absolute", right: 3, top: 4, bottom: 4, width: 3,
+        borderRadius: 2, background: t.stroke }}>
+        {core.temp_c != null && (
+          <div style={{ position: "absolute", bottom: 0, width: "100%", height: `${tempFrac}%`,
+            background: tempColor(core.temp_c), borderRadius: 2, transition: "height 1s ease" }} />
+        )}
+      </div>
+      <div style={{ position: "relative" }}>
+        <div style={{ color: core.pct > 70 ? ACCENT.orange : ACCENT.blue, fontSize: 12, fontWeight: 700 }}>
+          {core.pct.toFixed(0)}%
+        </div>
+        <div style={{ color: t.textFaint, fontSize: 9 }}>T{core.id}</div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- app ----------
+export default function App() {
+  const [dark, setDark] = useState(true);
+  const [active, setActive] = useState("overview");
+  const [snap, setSnap] = useState(null);
+  const [sysInfo, setSysInfo] = useState(null);
+  const t = dark ? THEMES.dark : THEMES.light;
+
+  // históricos pra sparklines
+  const cpuHist = useRef([]);
+  const ramHist = useRef([]);
+  const gpuHist = useRef([]);
+  const cpuSparkHist = useRef([]); // por socket na página CPU, mapeado por índice
+
+  const push = (ref, v) => {
+    ref.current = [...ref.current, v].slice(-HISTORY);
+  };
+
+  useEffect(() => {
+    invoke("get_system_info").then(setSysInfo).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      try {
+        const s = await invoke("get_snapshot");
+        if (!alive) return;
+        push(cpuHist, s.cpu_usage);
+        push(ramHist, s.mem_pct);
+        push(gpuHist, s.gpus[0]?.usage_pct ?? 0);
+        setSnap(s);
+      } catch (e) {
+        // silencioso; backend pode ainda não estar pronto
+      }
+    };
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => { alive = false; clearInterval(iv); };
+  }, []);
+
+  return (
+    <div style={{ background: t.bg, height: "100%", display: "flex", color: t.text }}>
+      {/* Sidebar */}
+      <div style={{ width: 92, background: t.panel, borderRight: `1px solid ${t.stroke}`,
+        display: "flex", flexDirection: "column", alignItems: "center", padding: "18px 0", gap: 4 }}>
+        <div style={{ width: 40, height: 40, borderRadius: 12, marginBottom: 16,
+          background: `linear-gradient(135deg, ${ACCENT.blue}, ${ACCENT.purple})`,
+          display: "grid", placeItems: "center", fontWeight: 800, fontSize: 18, color: "#fff" }}>M</div>
+        {NAV.map((n) => {
+          const on = active === n.id;
+          return (
+            <button key={n.id} onClick={() => setActive(n.id)} style={{
+              width: 68, padding: "10px 0", borderRadius: 12, border: "none",
+              background: on ? `${n.accent}1a` : "transparent", cursor: "pointer",
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+              <n.icon size={20} color={on ? n.accent : t.textDim} />
+              <span style={{ fontSize: 10, color: on ? n.accent : t.textFaint, fontWeight: on ? 700 : 500 }}>
+                {n.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Main */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ height: 60, borderBottom: `1px solid ${t.stroke}`, display: "flex",
+          alignItems: "center", justifyContent: "space-between", padding: "0 26px" }}>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>MachCtrl</div>
+            <div style={{ fontSize: 11, color: t.textFaint }}>
+              {sysInfo ? `${sysInfo.hostname} · ${sysInfo.distro} · Uptime ${sysInfo.uptime}` : "carregando…"}
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12,
+              color: snap ? ACCENT.green : t.textFaint }}>
+              <div style={{ width: 8, height: 8, borderRadius: 4, background: snap ? ACCENT.green : t.textFaint }} />
+              {snap ? "Conectado" : "…"}
+            </div>
+            <button onClick={() => setDark((d) => !d)} style={{ width: 36, height: 36, borderRadius: 10,
+              border: `1px solid ${t.stroke}`, background: t.card, cursor: "pointer",
+              display: "grid", placeItems: "center" }}>
+              {dark ? <Sun size={16} color={t.textDim} /> : <Moon size={16} color={t.textDim} />}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ flex: 1, overflow: "auto", padding: 24 }}>
+          {active === "overview" && <Overview t={t} snap={snap} cpuHist={cpuHist.current} ramHist={ramHist.current} gpuHist={gpuHist.current} />}
+          {active === "cpu" && <CpuPage t={t} snap={snap} />}
+          {active === "memory" && <MemoryPage t={t} snap={snap} />}
+          {active === "disks" && <DisksPage t={t} snap={snap} />}
+          {active === "fans" && <FansPage t={t} />}
+          {active === "energy" && <EnergyPage t={t} />}
+          {active === "cleaner" && <CleanerPage t={t} />}
+          {active === "tune" && <Placeholder t={t} title="Ajuste" msg="Otimizações do sistema — em construção. Vamos montar essa tela juntos na próxima etapa." />}
+          {active === "about" && <AboutPage t={t} sysInfo={sysInfo} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- páginas ----------
+function Overview({ t, snap, cpuHist, ramHist, gpuHist }) {
+  if (!snap) return <Loading t={t} />;
+  const gpu = snap.gpus[0];
+  const barData = snap.top_procs.slice(0, 6).map((p) => ({ name: p.name, mb: Math.round(p.rss_mb) }));
+  const barColors = [ACCENT.blue, ACCENT.cyan, ACCENT.green, ACCENT.orange, ACCENT.purple, ACCENT.pink];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 18 }}>
+        <StatCard t={t} title="CPU" icon={Cpu} accent={ACCENT.blue}
+          value={snap.cpu_usage.toFixed(0)} unit="%"
+          sub={`${snap.cpu_temp_c != null ? snap.cpu_temp_c.toFixed(0) + "°C · " : ""}${(snap.cpu_freq_mhz / 1000).toFixed(2)} GHz${snap.cpu_watts != null ? " · " + snap.cpu_watts.toFixed(1) + " W" : ""}`}
+          history={cpuHist} />
+        <StatCard t={t} title="MEMÓRIA" icon={MemoryStick} accent={ACCENT.green}
+          value={snap.mem_pct.toFixed(0)} unit="%"
+          sub={`${snap.mem_used_gb.toFixed(1)} / ${snap.mem_total_gb.toFixed(1)} GB`}
+          history={ramHist} />
+        <StatCard t={t} title="GPU" icon={Activity} accent={ACCENT.purple}
+          value={gpu?.usage_pct != null ? gpu.usage_pct.toFixed(0) : "—"} unit={gpu ? "%" : ""}
+          sub={gpu ? `${gpu.name}${gpu.temp_c != null ? " · " + gpu.temp_c.toFixed(0) + "°C" : ""}` : "Nenhuma GPU"}
+          history={gpuHist} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 18 }}>
+        <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: 20 }}>
+          <div style={{ color: t.textDim, fontSize: 13, fontWeight: 600, marginBottom: 14 }}>TOP PROCESSOS (RAM)</div>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={barData} layout="vertical" margin={{ left: 20 }}>
+              <XAxis type="number" hide />
+              <YAxis type="category" dataKey="name" width={90}
+                tick={{ fill: t.textDim, fontSize: 12 }} axisLine={false} tickLine={false} />
+              <Bar dataKey="mb" radius={[0, 6, 6, 0]} isAnimationActive={false}>
+                {barData.map((_, i) => <Cell key={i} fill={barColors[i % barColors.length]} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: 20,
+          display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ color: t.textDim, fontSize: 13, fontWeight: 600 }}>REDE</div>
+          {snap.net.length === 0 && <span style={{ color: t.textFaint, fontSize: 13 }}>Nenhuma interface</span>}
+          {snap.net.map((n) => (
+            <div key={n.name}>
+              <div style={{ fontSize: 12, color: t.textFaint, marginBottom: 6 }}>{n.name}</div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <div style={{ flex: 1, background: t.panel, borderRadius: 10, padding: "10px 12px" }}>
+                  <div style={{ fontSize: 10, color: t.textFaint }}>↓ DOWNLOAD</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: ACCENT.blue }}>{n.down_kb.toFixed(0)} KB/s</div>
+                </div>
+                <div style={{ flex: 1, background: t.panel, borderRadius: 10, padding: "10px 12px" }}>
+                  <div style={{ fontSize: 10, color: t.textFaint }}>↑ UPLOAD</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: ACCENT.green }}>{n.up_kb.toFixed(0)} KB/s</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CpuPage({ t, snap }) {
+  if (!snap) return <Loading t={t} />;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      {snap.sockets.map((s) => (
+        <div key={s.socket_id} style={{ background: t.card, border: `1px solid ${t.stroke}`,
+          borderRadius: 18, padding: 22 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <div style={{ width: 52, height: 52, borderRadius: 14,
+                background: `linear-gradient(135deg, ${ACCENT.blue}, ${ACCENT.purple})`,
+                display: "grid", placeItems: "center", color: "#fff" }}>
+                <div style={{ textAlign: "center", lineHeight: 1 }}>
+                  <div style={{ fontSize: 9, opacity: 0.8 }}>CPU</div>
+                  <div style={{ fontSize: 22, fontWeight: 800 }}>{s.socket_id}</div>
+                </div>
+              </div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>{s.model}</div>
+                <div style={{ color: t.textFaint, fontSize: 12 }}>
+                  {s.phys_cores} núcleos · {s.threads} threads · {s.freq_ghz.toFixed(2)} GHz
+                </div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 30 }}>
+              {[["USO MÉDIO", `${s.usage_pct.toFixed(0)}%`, ACCENT.blue],
+                ["PACKAGE", s.package_temp_c != null ? `${s.package_temp_c.toFixed(0)}°C` : "—", ACCENT.green],
+                ["FREQ", `${s.freq_ghz.toFixed(2)} GHz`, t.textDim]].map(([l, v, c]) => (
+                <div key={l} style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 10, color: t.textFaint, fontWeight: 600 }}>{l}</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: c }}>{v}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(14, 1fr)", gap: 6 }}>
+            {s.cores.map((c) => <CoreCell key={c.id} t={t} core={c} />)}
+          </div>
+          <div style={{ display: "flex", gap: 16, marginTop: 14, fontSize: 11 }}>
+            <span style={{ color: t.textDim }}>▬ Atividade (%)</span>
+            <span style={{ color: ACCENT.orange }}>▮ Temperatura (°C)</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MemoryPage({ t, snap }) {
+  const [slots, setSlots] = useState(null);
+  useEffect(() => { invoke("get_memory_slots").then(setSlots).catch(() => setSlots([])); }, []);
+  if (!snap) return <Loading t={t} />;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: 22,
+        display: "flex", gap: 40, alignItems: "center" }}>
+        {[["USO", `${snap.mem_pct.toFixed(0)}%`, ACCENT.green],
+          ["USADO", `${snap.mem_used_gb.toFixed(1)} GB`, t.text],
+          ["TOTAL", `${snap.mem_total_gb.toFixed(1)} GB`, t.text]].map(([l, v, c]) => (
+          <div key={l}>
+            <div style={{ fontSize: 10, color: t.textFaint, fontWeight: 600 }}>{l}</div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: c }}>{v}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ color: t.textDim, fontSize: 11, fontWeight: 700, letterSpacing: 0.5 }}>PENTES INSTALADOS</div>
+      {slots === null && <Loading t={t} />}
+      {slots?.length === 0 && <Empty t={t} msg="Não foi possível ler os slots (requer dmidecode com root)." />}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+        {slots?.map((s, i) => (
+          <div key={i} style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 14, padding: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+              <span style={{ fontWeight: 700, fontSize: 13 }}>{s.locator}</span>
+              <span style={{ color: ACCENT.blue, fontWeight: 700, fontSize: 13 }}>
+                {s.size_gb.toFixed(0)} GB {s.mem_type}
+              </span>
+            </div>
+            <Row t={t} k="Fabricante" v={s.manufacturer} />
+            <Row t={t} k="Velocidade" v={`${s.speed_mhz} MT/s`} />
+            <Row t={t} k="Voltagem" v={`${s.voltage.toFixed(2)} V`} vc={ACCENT.orange} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DisksPage({ t, snap }) {
+  if (!snap) return <Loading t={t} />;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {snap.disks.map((d) => (
+        <div key={d.mountpoint} style={{ background: t.card, border: `1px solid ${t.stroke}`,
+          borderRadius: 14, padding: 18 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>{d.mountpoint}</div>
+              <div style={{ color: t.textFaint, fontSize: 12 }}>{d.fstype}</div>
+            </div>
+            <div style={{ display: "flex", gap: 28 }}>
+              {[["USO", `${d.usage_pct.toFixed(0)}%`, ACCENT.blue],
+                ["LIVRE", `${d.free_gb.toFixed(1)} GB`, t.textDim],
+                ["TOTAL", `${d.total_gb.toFixed(1)} GB`, t.textDim]].map(([l, v, c]) => (
+                <div key={l} style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 10, color: t.textFaint, fontWeight: 600 }}>{l}</div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: c }}>{v}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ height: 8, background: t.panel, borderRadius: 4, overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${d.usage_pct}%`, background: ACCENT.blue, borderRadius: 4 }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FansPage({ t }) {
+  const [fans, setFans] = useState(null);
+  const load = useCallback(() => { invoke("get_fans").then(setFans).catch(() => setFans([])); }, []);
+  useEffect(() => { load(); const iv = setInterval(load, 2000); return () => clearInterval(iv); }, [load]);
+  if (fans === null) return <Loading t={t} />;
+  if (fans.length === 0) return <Empty t={t} msg="Nenhum fan detectado via /sys/class/hwmon." />;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {fans.map((f) => (
+        <div key={f.id} style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 14, padding: 18 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>{f.label}</div>
+              <div style={{ color: t.textFaint, fontSize: 12 }}>{f.chip}</div>
+            </div>
+            <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 10, color: t.textFaint, fontWeight: 600 }}>RPM</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: ACCENT.blue }}>{f.rpm}</div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 10, color: t.textFaint, fontWeight: 600 }}>PWM</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: t.textDim }}>{f.pct}%</div>
+              </div>
+            </div>
+          </div>
+          {f.controllable ? (
+            <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 14 }}>
+              <input type="range" min="0" max="100" defaultValue={f.pct} style={{ flex: 1 }}
+                onMouseUp={(e) => invoke("set_fan", { pwmPath: f.pwm_path, pwmEnablePath: f.pwm_enable_path, speed: Number(e.target.value) }).catch(() => {})} />
+              <button onClick={() => invoke("set_fan_auto", { pwmEnablePath: f.pwm_enable_path }).catch(() => {})}
+                style={{ padding: "8px 16px", borderRadius: 8, border: `1px solid ${t.stroke}`,
+                  background: t.panel, color: t.text, cursor: "pointer", fontWeight: 600 }}>Auto</button>
+            </div>
+          ) : (
+            <div style={{ color: t.textFaint, fontSize: 12, marginTop: 10 }}>Somente leitura (sem controle PWM).</div>
+          )}
+        </div>
+      ))}
+      <div style={{ color: t.textFaint, fontSize: 12, marginTop: 4 }}>
+        Controle de fans requer root. Rode com pkexec/sudo se os sliders não tiverem efeito.
+      </div>
+    </div>
+  );
+}
+
+function EnergyPage({ t }) {
+  const [info, setInfo] = useState(null);
+  const load = useCallback(() => { invoke("get_profiles").then(setInfo).catch(() => setInfo(null)); }, []);
+  useEffect(() => { load(); }, [load]);
+  const DEFS = [
+    { id: "silent", name: "Economia", desc: "Baixo consumo · Silencioso", c: ACCENT.green },
+    { id: "balanced", name: "Equilibrado", desc: "Desempenho adaptativo", c: ACCENT.blue },
+    { id: "performance", name: "Desempenho", desc: "Máximo desempenho · Turbo", c: ACCENT.orange },
+  ];
+  if (!info) return <Loading t={t} />;
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 18 }}>
+      {DEFS.filter((d) => info.available.includes(d.id)).map((d) => {
+        const on = info.current === d.id;
+        return (
+          <div key={d.id} style={{ background: on ? `${d.c}12` : t.card,
+            border: `1px solid ${on ? d.c + "66" : t.stroke}`, borderRadius: 18, padding: 24,
+            display: "flex", flexDirection: "column", alignItems: "center", gap: 12, position: "relative" }}>
+            {on && <span style={{ position: "absolute", top: 14, right: 14, fontSize: 10, fontWeight: 800,
+              color: d.c, background: `${d.c}22`, padding: "3px 10px", borderRadius: 6 }}>ATIVO</span>}
+            <div style={{ width: 56, height: 56, borderRadius: 16, marginTop: 8,
+              background: on ? `linear-gradient(135deg, ${d.c}, ${ACCENT.red})` : t.panel,
+              display: "grid", placeItems: "center" }}>
+              <Zap size={26} color={on ? "#fff" : t.textDim} />
+            </div>
+            <div style={{ fontWeight: 800, fontSize: 17, color: on ? d.c : t.text }}>{d.name}</div>
+            <div style={{ fontSize: 12, color: t.textFaint, textAlign: "center" }}>{d.desc}</div>
+            <button disabled={on} onClick={() => invoke("apply_profile", { name: d.id }).then(load).catch(() => {})}
+              style={{ marginTop: 8, width: "100%", padding: "10px 0", borderRadius: 10, border: "none",
+                background: on ? d.c : t.panel, color: on ? "#fff" : t.textDim, fontWeight: 700,
+                cursor: on ? "default" : "pointer" }}>{on ? "Ativo" : "Aplicar"}</button>
+          </div>
+        );
+      })}
+      <div style={{ gridColumn: "1 / -1", color: t.textFaint, fontSize: 12 }}>
+        Aplicar perfil requer root (escrita em /sys). Rode com pkexec/sudo se necessário.
+      </div>
+    </div>
+  );
+}
+
+function CleanerPage({ t }) {
+  const [tasks, setTasks] = useState(null);
+  const [results, setResults] = useState({});
+  useEffect(() => { invoke("get_clean_tasks").then(setTasks).catch(() => setTasks([])); }, []);
+  if (tasks === null) return <Loading t={t} />;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {tasks.map((task) => (
+        <div key={task.id} style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 14,
+          padding: 18, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontWeight: 700, fontSize: 14 }}>{task.label}</span>
+              {task.needs_root && <span style={{ fontSize: 9, fontWeight: 800, color: ACCENT.orange,
+                background: `${ACCENT.orange}22`, padding: "2px 8px", borderRadius: 5 }}>ROOT</span>}
+            </div>
+            <div style={{ color: t.textFaint, fontSize: 12, marginTop: 2 }}>{task.description}</div>
+            {results[task.id] && <div style={{ color: ACCENT.green, fontSize: 12, marginTop: 4 }}>
+              {results[task.id]}</div>}
+          </div>
+          <button onClick={() => invoke("run_clean", { taskId: task.id }).then((r) =>
+            setResults((prev) => ({ ...prev, [task.id]: `${r.result}${r.cleaned ? " (" + r.cleaned + ")" : ""}` }))).catch(() => {})}
+            style={{ padding: "8px 18px", borderRadius: 8, border: `1px solid ${t.stroke}`,
+              background: t.panel, color: t.text, cursor: "pointer", fontWeight: 600 }}>Executar</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AboutPage({ t, sysInfo }) {
+  return (
+    <div style={{ display: "grid", placeItems: "center", height: "100%" }}>
+      <div style={{ textAlign: "center", maxWidth: 420 }}>
+        <div style={{ width: 72, height: 72, borderRadius: 20, margin: "0 auto 18px",
+          background: `linear-gradient(135deg, ${ACCENT.blue}, ${ACCENT.purple})`,
+          display: "grid", placeItems: "center", fontSize: 32, fontWeight: 800, color: "#fff" }}>M</div>
+        <div style={{ fontSize: 24, fontWeight: 800 }}>MachCtrl</div>
+        <div style={{ color: t.textDim, fontSize: 14, marginTop: 4 }}>Monitor e Otimizador de Hardware para Linux</div>
+        <div style={{ color: t.textFaint, fontSize: 12, marginTop: 14 }}>
+          v0.1 · Rust + Tauri + React{sysInfo ? ` · ${sysInfo.distro}` : ""}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- utilitários ----------
+function Placeholder({ t, title, msg }) {
+  return (
+    <div style={{ display: "grid", placeItems: "center", height: "100%" }}>
+      <div style={{ textAlign: "center", maxWidth: 420 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: t.textDim, marginBottom: 8 }}>{title}</div>
+        <div style={{ color: t.textFaint, fontSize: 14 }}>{msg}</div>
+      </div>
+    </div>
+  );
+}
+function Loading({ t }) {
+  return <div style={{ display: "grid", placeItems: "center", height: 200, color: t.textFaint, fontSize: 13 }}>Lendo sensores…</div>;
+}
+function Empty({ t, msg }) {
+  return <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 14, padding: 24,
+    color: t.textFaint, fontSize: 13, textAlign: "center" }}>{msg}</div>;
+}
+function Row({ t, k, v, vc }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginTop: 4 }}>
+      <span style={{ color: t.textFaint }}>{k}</span>
+      <span style={{ color: vc || t.textDim, fontWeight: 600 }}>{v}</span>
+    </div>
+  );
+}
