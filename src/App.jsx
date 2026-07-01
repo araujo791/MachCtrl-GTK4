@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import fanIcon from "./assets/fan-icon.webp";
+import fanBlade from "./assets/fan-blade.webp";
 import {
   AreaChart, Area, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Cell,
 } from "recharts";
@@ -610,6 +612,30 @@ function IoRow({ t, icon: Icon, label, value, color, hist }) {
   );
 }
 
+function fanRole(f) {
+  const c = (f.chip || "").toLowerCase();
+  const l = (f.label || "").toLowerCase();
+  if (c.includes("amdgpu") || c.includes("nvidia") || c.includes("nouveau") || c.includes("radeon") || l.includes("gpu"))
+    return { name: "GPU", color: "#a78bfa" };
+  if (c.includes("k10temp") || c.includes("coretemp") || l.includes("cpu"))
+    return { name: "CPU", color: "#fb923c" };
+  return { name: "Sistema", color: "#22d3ee" };
+}
+
+function FanImage({ rpm, size = 48 }) {
+  // moldura fixa + pás girando por cima; velocidade da rotação varia com o RPM
+  const dur = rpm > 0 ? Math.max(0.35, 2200 / rpm) : 0;
+  return (
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
+      <img src={fanIcon} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+      <img src={fanBlade} alt="" style={{
+        position: "absolute", inset: "18%", width: "64%", height: "64%",
+        animation: dur ? `spin ${dur}s linear infinite` : "none",
+      }} />
+    </div>
+  );
+}
+
 function FansPage({ t }) {
   const [fans, setFans] = useState(null);
   const [modes, setModes] = useState({}); // id -> 'auto' | 'manual' | 'max'
@@ -631,26 +657,32 @@ function FansPage({ t }) {
     }
   };
 
+  // conta fans por função pra numerar (CPU 1, CPU 2, GPU, ...)
+  const roleCounts = {};
+
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
       {fans.map((f) => {
         const mode = modes[f.id] || "auto";
         const spinning = f.rpm > 0;
+        const role = fanRole(f);
+        roleCounts[role.name] = (roleCounts[role.name] || 0) + 1;
+        const sameRole = fans.filter((x) => fanRole(x).name === role.name).length;
+        const displayName = sameRole > 1 ? `${role.name} ${roleCounts[role.name]}` : role.name;
         return (
           <div key={f.id} style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 16,
             padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
-            {/* header: ícone girando + nome + RPM */}
+            {/* header: ventilador (imagem animada) + nome + RPM */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                <div style={{ width: 42, height: 42, borderRadius: 11, background: `${ACCENT.cyan}18`,
-                  display: "grid", placeItems: "center", flexShrink: 0 }}>
-                  <Fan size={22} color={ACCENT.cyan}
-                    style={{ animation: spinning ? "spin 2s linear infinite" : "none" }} />
-                </div>
+                <FanImage rpm={f.rpm} size={48} />
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden",
-                    textOverflow: "ellipsis" }} title={f.label}>{f.label}</div>
-                  <div style={{ color: t.textFaint, fontSize: 11 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 9, fontWeight: 800, color: role.color,
+                      background: `${role.color}22`, padding: "2px 7px", borderRadius: 5 }}>{role.name}</span>
+                    <span style={{ fontWeight: 700, fontSize: 14 }}>{displayName}</span>
+                  </div>
+                  <div style={{ color: t.textFaint, fontSize: 11, marginTop: 2 }}>
                     modo: <span style={{ color: mode === "auto" ? ACCENT.green : mode === "max" ? ACCENT.red : ACCENT.blue, fontWeight: 600 }}>
                       {mode === "auto" ? "Automático" : mode === "max" ? "Máximo" : "Manual"}
                     </span>
@@ -669,15 +701,15 @@ function FansPage({ t }) {
                 <span>PWM atual</span><span>{f.pct}%</span>
               </div>
               <div style={{ height: 6, background: t.panel, borderRadius: 3, overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${f.pct}%`, background: ACCENT.cyan, borderRadius: 3, transition: "width 0.5s" }} />
+                <div style={{ height: "100%", width: `${f.pct}%`, background: role.color, borderRadius: 3, transition: "width 0.5s" }} />
               </div>
             </div>
 
             {f.controllable ? (
               <>
-                {/* botões de modo */}
                 <div style={{ display: "flex", gap: 8 }}>
-                  {[["auto", "Automático", ACCENT.green], ["manual", "Manual", ACCENT.blue], ["max", "Máximo", ACCENT.red]].map(([m, label, c]) => {
+                  {[["auto", "Automático", ACCENT.green], ["manual", "Manual", ACCENT.blue], ["max", "Máximo", ACCENT.red],
+                    ...(role.name === "GPU" ? [["curve", "Curva", ACCENT.purple]] : [])].map(([m, label, c]) => {
                     const on = mode === m;
                     return (
                       <button key={m} onClick={() => setMode(f, m)} style={{
@@ -688,7 +720,6 @@ function FansPage({ t }) {
                     );
                   })}
                 </div>
-                {/* slider só no modo manual */}
                 {mode === "manual" && (
                   <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                     <input type="range" min="0" max="100" value={manualPct[f.id] ?? f.pct}
@@ -700,6 +731,7 @@ function FansPage({ t }) {
                     </span>
                   </div>
                 )}
+                {mode === "curve" && <FanCurve t={t} />}
               </>
             ) : (
               <div style={{ color: t.textFaint, fontSize: 12 }}>Somente leitura (sem controle PWM).</div>
@@ -707,6 +739,63 @@ function FansPage({ t }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function FanCurve({ t }) {
+  // Pontos padrão: [temperatura°C, velocidade%]. Editor visual simples.
+  const [points, setPoints] = useState([
+    [30, 20], [50, 35], [65, 55], [80, 85], [90, 100],
+  ]);
+  const W = 280, H = 130, pad = 24;
+  const xToPx = (temp) => pad + ((temp - 20) / 80) * (W - 2 * pad);
+  const yToPx = (spd) => H - pad - (spd / 100) * (H - 2 * pad);
+  const dragging = useRef(null);
+
+  const onMove = (e) => {
+    if (dragging.current === null) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+    let temp = Math.round(20 + ((px - pad) / (W - 2 * pad)) * 80);
+    let spd = Math.round(((H - pad - py) / (H - 2 * pad)) * 100);
+    temp = Math.max(20, Math.min(100, temp));
+    spd = Math.max(0, Math.min(100, spd));
+    setPoints((pts) => pts.map((p, i) => (i === dragging.current ? [temp, spd] : p))
+      .sort((a, b) => a[0] - b[0]));
+  };
+
+  const path = points.map((p, i) => `${i === 0 ? "M" : "L"} ${xToPx(p[0])} ${yToPx(p[1])}`).join(" ");
+
+  return (
+    <div style={{ background: t.panel, borderRadius: 10, padding: 12 }}>
+      <div style={{ fontSize: 11, color: t.textFaint, marginBottom: 8 }}>
+        Curva temperatura × velocidade — arraste os pontos
+      </div>
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ cursor: "crosshair", touchAction: "none" }}
+        onMouseMove={onMove} onMouseUp={() => (dragging.current = null)} onMouseLeave={() => (dragging.current = null)}>
+        {/* grade */}
+        {[0, 25, 50, 75, 100].map((g) => (
+          <line key={g} x1={pad} y1={yToPx(g)} x2={W - pad} y2={yToPx(g)} stroke={t.stroke} strokeWidth="1" />
+        ))}
+        {/* área sob a curva */}
+        <path d={`${path} L ${xToPx(points[points.length - 1][0])} ${H - pad} L ${xToPx(points[0][0])} ${H - pad} Z`}
+          fill={`${ACCENT.purple}22`} />
+        {/* linha */}
+        <path d={path} fill="none" stroke={ACCENT.purple} strokeWidth="2" />
+        {/* pontos */}
+        {points.map((p, i) => (
+          <circle key={i} cx={xToPx(p[0])} cy={yToPx(p[1])} r="6" fill={ACCENT.purple} stroke="#fff" strokeWidth="1.5"
+            style={{ cursor: "grab" }} onMouseDown={() => (dragging.current = i)} />
+        ))}
+        {/* eixos */}
+        <text x={pad} y={H - 6} fill={t.textFaint} fontSize="9">20°C</text>
+        <text x={W - pad - 20} y={H - 6} fill={t.textFaint} fontSize="9">100°C</text>
+      </svg>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+        <button style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: ACCENT.purple,
+          color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Aplicar curva</button>
+      </div>
     </div>
   );
 }
