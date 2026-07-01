@@ -4,6 +4,30 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  /* Bloqueia seleção de texto/gráficos — comportamento de app nativo, não página web */
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Impede arrastar imagens (comportamento web indesejado em app) */
+img {
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+/* Remove o realce azul de toque/clique no WebKit */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Permite seleção apenas onde faz sentido (inputs de texto) */
+input,
+textarea {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  user-select: text;
 }
 
 html,
