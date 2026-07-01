@@ -71,6 +71,8 @@ struct GpuDto {
     temp_c: Option<f64>,
     vram_used_mb: Option<f64>,
     vram_total_mb: Option<f64>,
+    fan_pct: Option<i32>,
+    fan_rpm: Option<i64>,
 }
 
 #[derive(Serialize)]
@@ -103,6 +105,10 @@ struct SystemInfo {
     distro: String,
     uptime: String,
     cpu_model: String,
+    kernel: String,
+    motherboard: String,
+    bios: String,
+    install_date: String,
 }
 
 #[derive(Serialize)]
@@ -248,6 +254,8 @@ fn get_snapshot(state: tauri::State<SharedState>) -> Snapshot {
             temp_c: g.temp_c,
             vram_used_mb: g.vram_used_mb,
             vram_total_mb: g.vram_total_mb,
+            fan_pct: g.fan_pct,
+            fan_rpm: g.fan_rpm,
         })
         .collect();
 
@@ -326,6 +334,10 @@ fn get_system_info() -> SystemInfo {
         distro: procstat::read_distro_name(),
         uptime: procstat::read_uptime_human(),
         cpu_model: procstat::read_cpu_model(),
+        kernel: procstat::read_kernel_version(),
+        motherboard: procstat::read_motherboard(),
+        bios: procstat::read_bios(),
+        install_date: procstat::read_install_date(),
     }
 }
 

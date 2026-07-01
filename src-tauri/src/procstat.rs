@@ -397,3 +397,73 @@ pub fn read_cpu_cores_for_socket(socket_logical_ids: &[usize]) -> usize {
         })
         .unwrap_or(socket_logical_ids.len().max(1))
 }
+
+// ---------------------------------------------------------------------------
+// Informações extras de sistema (kernel, placa-mãe, BIOS, data de instalação)
+// ---------------------------------------------------------------------------
+
+/// Versão do kernel (uname -r), lida de /proc/sys/kernel/osrelease.
+pub fn read_kernel_version() -> String {
+    fs::read_to_string("/proc/sys/kernel/osrelease")
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default()
+}
+
+/// Nome do produto da placa-mãe (ex: "MACHINIST X99"). Lê de DMI via sysfs,
+/// que não exige root (diferente do dmidecode).
+pub fn read_motherboard() -> String {
+    let vendor = fs::read_to_string("/sys/devices/virtual/dmi/id/board_vendor")
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+    let name = fs::read_to_string("/sys/devices/virtual/dmi/id/board_name")
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+    match (vendor.is_empty(), name.is_empty()) {
+        (false, false) => format!("{vendor} {name}"),
+        (true, false) => name,
+        (false, true) => vendor,
+        _ => "Desconhecida".to_string(),
+    }
+}
+
+/// Fabricante e data do BIOS/UEFI (ex: "American Megatrends Inc. 12/20/2022").
+pub fn read_bios() -> String {
+    let vendor = fs::read_to_string("/sys/devices/virtual/dmi/id/bios_vendor")
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+    let date = fs::read_to_string("/sys/devices/virtual/dmi/id/bios_date")
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+    format!("{vendor} {date}").trim().to_string()
+}
+
+/// Data aproximada de instalação do sistema, inferida da data de criação do
+/// filesystem raiz (nascimento do diretório /lost+found ou do próprio /).
+/// Usa `stat` pra ler o birth time; retorna algo como "2026-05-30".
+pub fn read_install_date() -> String {
+    // Tenta o birth time (%W) de / via stat; nem todo fs suporta, então cai
+    // pra data de modificação do /etc como aproximação razoável.
+    let try_stat = |path: &str, fmt: &str| -> Option<String> {
+        std::process::Command::new("stat")
+            .args(["-c", fmt, path])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .and_then(|o| {
+                let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                if s.is_empty() || s == "0" || s == "-" { None } else { Some(s) }
+            })
+    };
+    // %w = data de nascimento humana (YYYY-MM-DD ...). Pega só a parte da data.
+    if let Some(birth) = try_stat("/", "%w") {
+        if let Some(date) = birth.split_whitespace().next() {
+            if date.contains('-') {
+                return date.to_string();
+            }
+        }
+    }
+    // Fallback: data de modificação de /etc/hostname (criado na instalação)
+    try_stat("/etc/hostname", "%y")
+        .and_then(|s| s.split_whitespace().next().map(|d| d.to_string()))
+        .unwrap_or_else(|| "—".to_string())
+}

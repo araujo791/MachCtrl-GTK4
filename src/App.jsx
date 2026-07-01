@@ -58,29 +58,6 @@ function Sparkline({ data, color, height = 48 }) {
   );
 }
 
-function StatCard({ t, title, icon: Icon, accent, value, unit, sub, history }) {
-  return (
-    <div style={{
-      background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18,
-      padding: 20, display: "flex", flexDirection: "column", gap: 14, minHeight: 150,
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <div style={{ width: 34, height: 34, borderRadius: 10, background: `${accent}22`,
-          display: "grid", placeItems: "center" }}>
-          <Icon size={18} color={accent} />
-        </div>
-        <span style={{ color: t.textDim, fontSize: 13, fontWeight: 600 }}>{title}</span>
-      </div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-        <span style={{ color: t.text, fontSize: 34, fontWeight: 800, lineHeight: 1 }}>{value}</span>
-        <span style={{ color: t.textDim, fontSize: 16, fontWeight: 600 }}>{unit}</span>
-      </div>
-      <div style={{ marginTop: -6 }}><Sparkline data={history} color={accent} /></div>
-      <span style={{ color: t.textFaint, fontSize: 12 }}>{sub}</span>
-    </div>
-  );
-}
-
 function CoreCell({ t, core }) {
   const tempFrac = core.temp_c != null ? Math.min(100, ((core.temp_c - 30) / 60) * 100) : 0;
   return (
@@ -197,7 +174,7 @@ export default function App() {
         </div>
 
         <div style={{ flex: 1, overflow: "auto", padding: 24 }}>
-          {active === "overview" && <Overview t={t} snap={snap} cpuHist={cpuHist.current} ramHist={ramHist.current} gpuHist={gpuHist.current} />}
+          {active === "overview" && <Overview t={t} snap={snap} sysInfo={sysInfo} cpuHist={cpuHist.current} ramHist={ramHist.current} gpuHist={gpuHist.current} />}
           {active === "cpu" && <CpuPage t={t} snap={snap} />}
           {active === "memory" && <MemoryPage t={t} snap={snap} />}
           {active === "disks" && <DisksPage t={t} snap={snap} />}
@@ -213,28 +190,93 @@ export default function App() {
 }
 
 // ---------- páginas ----------
-function Overview({ t, snap, cpuHist, ramHist, gpuHist }) {
+function Overview({ t, snap, sysInfo, cpuHist, ramHist, gpuHist }) {
   if (!snap) return <Loading t={t} />;
   const gpu = snap.gpus[0];
   const barData = snap.top_procs.slice(0, 6).map((p) => ({ name: p.name, mb: Math.round(p.rss_mb) }));
   const barColors = [ACCENT.blue, ACCENT.cyan, ACCENT.green, ACCENT.orange, ACCENT.purple, ACCENT.pink];
+  const vramPct = gpu?.vram_used_mb != null && gpu?.vram_total_mb ? (gpu.vram_used_mb / gpu.vram_total_mb) * 100 : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 18 }}>
-        <StatCard t={t} title="CPU" icon={Cpu} accent={ACCENT.blue}
-          value={snap.cpu_usage.toFixed(0)} unit="%"
-          sub={`${snap.cpu_temp_c != null ? snap.cpu_temp_c.toFixed(0) + "°C · " : ""}${(snap.cpu_freq_mhz / 1000).toFixed(2)} GHz${snap.cpu_watts != null ? " · " + snap.cpu_watts.toFixed(1) + " W" : ""}`}
-          history={cpuHist} />
-        <StatCard t={t} title="MEMÓRIA" icon={MemoryStick} accent={ACCENT.green}
-          value={snap.mem_pct.toFixed(0)} unit="%"
-          sub={`${snap.mem_used_gb.toFixed(1)} / ${snap.mem_total_gb.toFixed(1)} GB`}
-          history={ramHist} />
-        <StatCard t={t} title="GPU" icon={Activity} accent={ACCENT.purple}
-          value={gpu?.usage_pct != null ? gpu.usage_pct.toFixed(0) : "—"} unit={gpu ? "%" : ""}
-          sub={gpu ? `${gpu.name}${gpu.temp_c != null ? " · " + gpu.temp_c.toFixed(0) + "°C" : ""}` : "Nenhuma GPU"}
-          history={gpuHist} />
+      {/* Faixa de sistema */}
+      <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: "18px 22px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 18 }}>
+          <SysItem t={t} k="SISTEMA" v={sysInfo?.distro || "—"} accent={ACCENT.blue} />
+          <SysItem t={t} k="KERNEL" v={sysInfo?.kernel || "—"} accent={ACCENT.purple} />
+          <SysItem t={t} k="PLACA-MÃE" v={sysInfo?.motherboard || "—"} accent={ACCENT.cyan} />
+          <SysItem t={t} k="INSTALADO EM" v={sysInfo?.install_date || "—"} accent={ACCENT.green} />
+        </div>
+        {sysInfo?.bios && sysInfo.bios !== "—" && (
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${t.stroke}`, fontSize: 12, color: t.textFaint }}>
+            BIOS · {sysInfo.bios}
+          </div>
+        )}
       </div>
+
+      {/* Três cards de destaque: CPU, Memória, GPU */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 18 }}>
+        {/* CPU detalhado */}
+        <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: 20,
+          display: "flex", flexDirection: "column", gap: 12 }}>
+          <CardHead t={t} icon={Cpu} accent={ACCENT.blue} title="CPU" />
+          <BigValue t={t} value={snap.cpu_usage.toFixed(0)} unit="%" />
+          <div style={{ marginTop: -4 }}><Sparkline data={cpuHist} color={ACCENT.blue} /></div>
+          <div style={{ fontSize: 12, color: t.textFaint, lineHeight: 1.4 }}>{snap.sockets[0]?.model || "CPU"}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 2 }}>
+            <MiniStat t={t} k="Sockets" v={`${snap.sockets.length}`} />
+            <MiniStat t={t} k="Threads" v={`${snap.sockets.reduce((a, s) => a + s.threads, 0)}`} />
+            <MiniStat t={t} k="Temp" v={snap.cpu_temp_c != null ? `${snap.cpu_temp_c.toFixed(0)}°C` : "—"} c={ACCENT.green} />
+            <MiniStat t={t} k="Freq" v={`${(snap.cpu_freq_mhz / 1000).toFixed(2)} GHz`} />
+            {snap.cpu_watts != null && <MiniStat t={t} k="Consumo" v={`${snap.cpu_watts.toFixed(1)} W`} c={ACCENT.orange} />}
+          </div>
+        </div>
+
+        {/* Memória */}
+        <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: 20,
+          display: "flex", flexDirection: "column", gap: 12 }}>
+          <CardHead t={t} icon={MemoryStick} accent={ACCENT.green} title="MEMÓRIA" />
+          <BigValue t={t} value={snap.mem_pct.toFixed(0)} unit="%" />
+          <div style={{ marginTop: -4 }}><Sparkline data={ramHist} color={ACCENT.green} /></div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 2 }}>
+            <MiniStat t={t} k="Em uso" v={`${snap.mem_used_gb.toFixed(1)} GB`} c={ACCENT.green} />
+            <MiniStat t={t} k="Livre" v={`${(snap.mem_total_gb - snap.mem_used_gb).toFixed(1)} GB`} />
+            <MiniStat t={t} k="Total" v={`${snap.mem_total_gb.toFixed(1)} GB`} />
+          </div>
+        </div>
+
+        {/* GPU detalhado */}
+        <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: 20,
+          display: "flex", flexDirection: "column", gap: 12 }}>
+          <CardHead t={t} icon={Activity} accent={ACCENT.purple} title="GPU" badge={gpu?.vendor?.toUpperCase()} />
+          {gpu ? (
+            <>
+              <BigValue t={t} value={gpu.usage_pct != null ? gpu.usage_pct.toFixed(0) : "—"} unit={gpu.usage_pct != null ? "%" : ""} />
+              <div style={{ marginTop: -4 }}><Sparkline data={gpuHist} color={ACCENT.purple} /></div>
+              <div style={{ fontSize: 12, color: t.textFaint, lineHeight: 1.4 }}>{gpu.name}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 2 }}>
+                <MiniStat t={t} k="Temp" v={gpu.temp_c != null ? `${gpu.temp_c.toFixed(0)}°C` : "—"} c={ACCENT.green} />
+                {gpu.fan_rpm != null && <MiniStat t={t} k="Fan" v={`${gpu.fan_rpm} RPM`} />}
+                {gpu.vram_total_mb != null && (
+                  <MiniStat t={t} k="VRAM" v={`${(gpu.vram_used_mb / 1024).toFixed(1)}/${(gpu.vram_total_mb / 1024).toFixed(1)} GB`} c={ACCENT.purple} />
+                )}
+              </div>
+              {vramPct != null && (
+                <div style={{ marginTop: 2 }}>
+                  <div style={{ fontSize: 10, color: t.textFaint, marginBottom: 4 }}>USO DE VRAM · {vramPct.toFixed(0)}%</div>
+                  <div style={{ height: 6, background: t.panel, borderRadius: 3, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${vramPct}%`, background: ACCENT.purple, borderRadius: 3 }} />
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ color: t.textFaint, fontSize: 13, padding: "20px 0", textAlign: "center" }}>Nenhuma GPU detectada</div>
+          )}
+        </div>
+      </div>
+
+      {/* Processos + Rede */}
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 18 }}>
         <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: 20 }}>
           <div style={{ color: t.textDim, fontSize: 13, fontWeight: 600, marginBottom: 14 }}>TOP PROCESSOS (RAM)</div>
@@ -270,6 +312,45 @@ function Overview({ t, snap, cpuHist, ramHist, gpuHist }) {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+// Helpers da Visão Geral
+function SysItem({ t, k, v, accent }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: 10, color: accent, fontWeight: 700, letterSpacing: 0.4, marginBottom: 4 }}>{k}</div>
+      <div style={{ fontSize: 13, color: t.text, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={v}>{v}</div>
+    </div>
+  );
+}
+function CardHead({ t, icon: Icon, accent, title, badge }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ width: 34, height: 34, borderRadius: 10, background: `${accent}22`, display: "grid", placeItems: "center" }}>
+          <Icon size={18} color={accent} />
+        </div>
+        <span style={{ color: t.textDim, fontSize: 13, fontWeight: 600 }}>{title}</span>
+      </div>
+      {badge && <span style={{ fontSize: 9, fontWeight: 800, color: accent, background: `${accent}22`, padding: "3px 8px", borderRadius: 5 }}>{badge}</span>}
+    </div>
+  );
+}
+function BigValue({ t, value, unit }) {
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+      <span style={{ color: t.text, fontSize: 34, fontWeight: 800, lineHeight: 1 }}>{value}</span>
+      <span style={{ color: t.textDim, fontSize: 16, fontWeight: 600 }}>{unit}</span>
+    </div>
+  );
+}
+function MiniStat({ t, k, v, c }) {
+  return (
+    <div style={{ background: t.panel, borderRadius: 8, padding: "8px 10px" }}>
+      <div style={{ fontSize: 9, color: t.textFaint, fontWeight: 600 }}>{k}</div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: c || t.text }}>{v}</div>
     </div>
   );
 }
