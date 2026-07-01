@@ -423,7 +423,17 @@ function CpuPage({ t, snap }) {
 
 function MemoryPage({ t, snap }) {
   const [mem, setMem] = useState(null);
+  const [loadingRoot, setLoadingRoot] = useState(false);
   useEffect(() => { invoke("get_memory_slots").then(setMem).catch(() => setMem({ slots: [], total_slots: 0, occupied_slots: 0 })); }, []);
+
+  const readWithRoot = () => {
+    setLoadingRoot(true);
+    invoke("get_memory_slots_root")
+      .then(setMem)
+      .catch(() => {})
+      .finally(() => setLoadingRoot(false));
+  };
+
   if (!snap) return <Loading t={t} />;
 
   const pct = snap.mem_pct;
@@ -464,8 +474,20 @@ function MemoryPage({ t, snap }) {
 
       <div style={{ color: t.textDim, fontSize: 11, fontWeight: 700, letterSpacing: 0.5 }}>PENTES INSTALADOS</div>
       {mem === null && <Loading t={t} />}
-      {mem && slots.length === 0 && totalSlots === 0 && (
-        <Empty t={t} msg="Não foi possível ler os slots de memória. Alguns sistemas exigem rodar com pkexec/root." />
+      {mem && slots.length === 0 && (
+        <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 14, padding: 24,
+          display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
+          <span style={{ color: t.textFaint, fontSize: 13, textAlign: "center" }}>
+            A leitura automática não conseguiu acessar os slots de memória neste sistema.<br />
+            Você pode ler com privilégio de administrador (vai pedir sua senha).
+          </span>
+          <button onClick={readWithRoot} disabled={loadingRoot} style={{
+            padding: "10px 20px", borderRadius: 10, border: "none", background: ACCENT.blue,
+            color: "#fff", fontWeight: 700, cursor: loadingRoot ? "default" : "pointer",
+            opacity: loadingRoot ? 0.6 : 1 }}>
+            {loadingRoot ? "Lendo…" : "Ler slots (requer senha)"}
+          </button>
+        </div>
       )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>

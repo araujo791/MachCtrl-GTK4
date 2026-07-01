@@ -416,6 +416,21 @@ struct MemoryDto {
 fn get_memory_slots() -> MemoryDto {
     let mem = procstat::read_meminfo();
     let info = memory::get_memory_slots(mem.total_gb);
+    mem_info_to_dto(info)
+}
+
+#[tauri::command]
+fn get_memory_slots_root() -> MemoryDto {
+    // Usa pkexec (prompt de senha). Se falhar/cancelar, cai na leitura normal.
+    let info = memory::get_memory_slots_pkexec()
+        .unwrap_or_else(|| {
+            let mem = procstat::read_meminfo();
+            memory::get_memory_slots(mem.total_gb)
+        });
+    mem_info_to_dto(info)
+}
+
+fn mem_info_to_dto(info: memory::MemorySlotsInfo) -> MemoryDto {
     MemoryDto {
         total_slots: info.total_slots,
         occupied_slots: info.occupied_slots,
@@ -554,6 +569,7 @@ fn main() {
             get_snapshot,
             get_system_info,
             get_memory_slots,
+            get_memory_slots_root,
             get_fans,
             set_fan,
             set_fan_auto,

@@ -115,6 +115,26 @@ fn parse_dmidecode_blocks(output: &str) -> MemorySlotsInfo {
     info
 }
 
+/// Versão que roda o dmidecode com privilégio via pkexec (abre prompt gráfico de
+/// senha). Usada sob demanda quando a leitura sem-root falha. Retorna None se o
+/// usuário cancelar a senha ou o pkexec não estiver disponível.
+pub fn get_memory_slots_pkexec() -> Option<MemorySlotsInfo> {
+    let output = Command::new("pkexec").args(["dmidecode", "-t", "17"]).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if !stdout.contains("Memory Device") {
+        return None;
+    }
+    let info = parse_dmidecode_blocks(&stdout);
+    if info.occupied_slots > 0 {
+        Some(info)
+    } else {
+        None
+    }
+}
+
 /// Equivalente a get_memory_info() (parte de slots): tenta primeiro ler o SMBIOS
 /// direto do sysfs (SEM root), depois dmidecode/sudo, e por fim heurística.
 pub fn get_memory_slots(total_gb: f64) -> MemorySlotsInfo {
