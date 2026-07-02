@@ -680,42 +680,77 @@ fn run_clean(task_id: String) -> CleanResultDto {
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
     // O app roda como root (sudo). Pra abrir o navegador na sessão gráfica do
-    // usuário, precisamos rodar como ele E passar as variáveis de sessão
-    // (DISPLAY/WAYLAND + DBUS), senão o xdg-open não consegue falar com o desktop.
+    // usuário, rodamos como ele com as variáveis de sessão. O xdg-open no KDE
+    // moderno é problemático (tenta kfmclient, que não existe mais), então
+    // tentamos uma cadeia de openers: gio → kde-open → xdg-open → navegadores.
     let real_user = std::env::var("SUDO_USER").ok().filter(|u| !u.is_empty() && u != "root");
 
-    if let Some(user) = real_user {
-        // uid do usuário, pra montar o DBUS/runtime dir corretos
-        let uid = std::process::Command::new("id")
-            .args(["-u", &user])
-            .output()
-            .ok()
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-            .unwrap_or_default();
+    let uid = real_user
+        .as_ref()
+        .and_then(|user| {
+            std::process::Command::new("id")
+                .args(["-u", user])
+                .output()
+                .ok()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        })
+        .unwrap_or_default();
 
-        let display = std::env::var("DISPLAY").unwrap_or_else(|_| ":0".to_string());
-        let wayland = std::env::var("WAYLAND_DISPLAY").unwrap_or_default();
-        let runtime_dir = format!("/run/user/{uid}");
-        let dbus = format!("unix:path=/run/user/{uid}/bus");
+    let display = std::env::var("DISPLAY").unwrap_or_else(|_| ":0".to_string());
+    let wayland = std::env::var("WAYLAND_DISPLAY").unwrap_or_default();
+    let runtime_dir = format!("/run/user/{uid}");
+    let dbus = format!("unix:path=/run/user/{uid}/bus");
 
-        // roda como o usuário, com ambiente gráfico e dbus da sessão dele
-        let status = std::process::Command::new("sudo")
-            .args(["-u", &user, "env",
-                &format!("DISPLAY={display}"),
-                &format!("WAYLAND_DISPLAY={wayland}"),
-                &format!("XDG_RUNTIME_DIR={runtime_dir}"),
-                &format!("DBUS_SESSION_BUS_ADDRESS={dbus}"),
-                "xdg-open", &url])
-            .spawn();
-        return status.map(|_| ()).map_err(|e| format!("erro ao abrir URL: {e}"));
+    // Openers em ordem de preferência (gio funciona em GNOME/KDE modernos).
+    let openers: &[&[&str]] = &[
+        &["gio", "open"],
+        &["kde-open", ""],
+        &["kde-open5", ""],
+        &["xdg-open", ""],
+        &["firefox", ""],
+        &["chromium", ""],
+        &["google-chrome-stable", ""],
+        &["vivaldi", ""],
+        &["brave", ""],
+    ];
+
+    for opener in openers {
+        let cmd_name = opener[0];
+        // monta os args: [cmd, subcmd?, url]
+        let mut args: Vec<String> = vec![];
+        if let Some(user) = &real_user {
+            args.extend(["-u".into(), user.clone(), "env".into(),
+                format!("DISPLAY={display}"),
+                format!("WAYLAND_DISPLAY={wayland}"),
+                format!("XDG_RUNTIME_DIR={runtime_dir}"),
+                format!("DBUS_SESSION_BUS_ADDRESS={dbus}"),
+                cmd_name.into()]);
+        } else {
+            args.push(cmd_name.into());
+        }
+        if !opener[1].is_empty() {
+            args.push(opener[1].into());
+        }
+        args.push(url.clone());
+
+        let program = if real_user.is_some() { "sudo" } else { cmd_name };
+        let spawn_args: Vec<&str> = if real_user.is_some() {
+            args.iter().map(|s| s.as_str()).collect()
+        } else {
+            args[1..].iter().map(|s| s.as_str()).collect()
+        };
+
+        if let Ok(mut child) = std::process::Command::new(program).args(&spawn_args).spawn() {
+            // dá um instante e verifica se não morreu imediatamente
+            std::thread::sleep(std::time::Duration::from_millis(400));
+            match child.try_wait() {
+                Ok(Some(status)) if !status.success() => continue, // falhou, tenta o próximo
+                _ => return Ok(()), // rodando ou terminou com sucesso
+            }
+        }
     }
 
-    // fallback: sem SUDO_USER, tenta direto
-    std::process::Command::new("xdg-open")
-        .arg(&url)
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("erro ao abrir URL: {e}"))
+    Err("não foi possível abrir o navegador".to_string())
 }
 
 /// Verifica se o serviço machctrld está ativo (pra o app não brigar pelo PWM).
