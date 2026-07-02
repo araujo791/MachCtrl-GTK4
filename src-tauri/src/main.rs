@@ -153,6 +153,32 @@ fn cpu_package_temp(temps: &[hwmon::TempSensor]) -> Option<f64> {
         .map(|t| t.value_c)
 }
 
+/// Temperatura de package POR SOCKET. O coretemp expõe um sensor rotulado
+/// "Package id N" por CPU física — casamos o N com o socket_id. Se não houver
+/// (label diferente), agrupamos os chips coretemp em ordem e usamos o i-ésimo.
+fn package_temp_for_socket(temps: &[hwmon::TempSensor], socket_id: usize, socket_index: usize) -> Option<f64> {
+    // 1) match direto pelo label "package id N"
+    let target = format!("package id {socket_id}");
+    if let Some(t) = temps.iter().find(|t| t.label.to_lowercase().trim() == target) {
+        return Some(t.value_c);
+    }
+    // 2) fallback: i-ésimo chip coretemp (ordenado) com label de package
+    let mut chips: Vec<&str> = temps
+        .iter()
+        .filter(|t| t.chip.to_lowercase().contains("coretemp"))
+        .map(|t| t.chip.as_str())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    chips.sort();
+    let chip = chips.get(socket_index)?;
+    temps
+        .iter()
+        .find(|t| &t.chip == chip && t.label.to_lowercase().contains("package"))
+        .or_else(|| temps.iter().find(|t| &t.chip == chip))
+        .map(|t| t.value_c)
+}
+
 /// Mapeia sensores "Core N" para cada CPU lógico, ciente de múltiplos sockets.
 fn build_core_temp_map(
     temps: &[hwmon::TempSensor],
@@ -219,7 +245,8 @@ fn get_snapshot(state: tauri::State<SharedState>) -> Snapshot {
     // --- monta sockets DTO ---
     let sockets: Vec<SocketDto> = sockets_info
         .iter()
-        .map(|s| {
+        .enumerate()
+        .map(|(socket_index, s)| {
             let cores: Vec<CoreDto> = s
                 .logical_ids
                 .iter()
@@ -245,7 +272,7 @@ fn get_snapshot(state: tauri::State<SharedState>) -> Snapshot {
                 threads: s.logical_ids.len(),
                 freq_ghz: s.freq_mhz as f64 / 1000.0,
                 usage_pct: usage,
-                package_temp_c: pkg_temp,
+                package_temp_c: package_temp_for_socket(&temps, s.socket_id, socket_index).or(pkg_temp),
                 cores,
             }
         })
