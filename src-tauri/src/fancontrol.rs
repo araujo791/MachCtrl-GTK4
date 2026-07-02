@@ -9,6 +9,7 @@
 // Isso também é o que faz a "curva" da GPU funcionar: em vez de deixar o driver
 // decidir, aplicamos a curva definida pelo usuário.
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -17,8 +18,12 @@ use std::time::Duration;
 use crate::hwmon;
 use crate::procstat;
 
+/// Caminho do arquivo de configuração persistente (compartilhado entre o app e o
+/// daemon). Fica em /etc pra o serviço systemd (root) conseguir ler no boot.
+pub const CONFIG_PATH: &str = "/etc/machctrl/fans.json";
+
 /// Modo de cada fan, escolhido pelo usuário no frontend.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum FanMode {
     Auto,   // controlado por software com curva padrão (CPU) ou pelo driver (GPU)
     Manual, // velocidade fixa definida pelo usuário
@@ -27,14 +32,14 @@ pub enum FanMode {
 }
 
 /// Um ponto da curva: temperatura (°C) → velocidade (%).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CurvePoint {
     pub temp: f64,
     pub pct: f64,
 }
 
 /// Estado de um fan sob controle.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FanControl {
     pub pwm_path: String,
     pub pwm_enable_path: Option<String>,
@@ -46,12 +51,31 @@ pub struct FanControl {
 }
 
 /// Estado global do controlador, compartilhado entre a thread e os comandos.
-#[derive(Default)]
+#[derive(Default, Serialize, Deserialize)]
 pub struct FanController {
     pub fans: HashMap<String, FanControl>, // fan_id -> controle
 }
 
 pub type SharedFanController = Arc<Mutex<FanController>>;
+
+/// Salva as configurações de fan no arquivo persistente (/etc/machctrl/fans.json).
+pub fn save_config(ctrl: &FanController) {
+    if let Some(dir) = std::path::Path::new(CONFIG_PATH).parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if let Ok(json) = serde_json::to_string_pretty(ctrl) {
+        let _ = std::fs::write(CONFIG_PATH, json);
+    }
+}
+
+/// Carrega as configurações salvas, se existirem. Retorna um controlador vazio
+/// se o arquivo não existir ou estiver corrompido.
+pub fn load_config() -> FanController {
+    std::fs::read_to_string(CONFIG_PATH)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
 
 /// Curva padrão da GPU (auto por software, suave, sem os picos do driver):
 /// <40°C→30%, 50°C→40%, 65°C→60%, 75°C→80%, 85°C+→100%.

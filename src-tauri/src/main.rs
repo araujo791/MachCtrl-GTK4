@@ -540,6 +540,9 @@ fn upsert_fan<F: FnOnce(&mut FanControl)>(
     entry.chip = chip.to_string();
     entry.is_gpu = chip_is_gpu(chip);
     update(entry);
+    // persiste no /etc/machctrl/fans.json pra o daemon aplicar e sobreviver a
+    // reinícios (só funciona rodando como root; se falhar, ignora).
+    fancontrol::save_config(&guard);
 }
 
 #[tauri::command]
@@ -700,10 +703,25 @@ fn open_url(url: String) -> Result<(), String> {
     result.map(|_| ()).map_err(|e| format!("erro ao abrir URL: {e}"))
 }
 
+/// Verifica se o serviço machctrld está ativo (pra o app não brigar pelo PWM).
+fn daemon_is_running() -> bool {
+    std::process::Command::new("systemctl")
+        .args(["is-active", "--quiet", "machctrld.service"])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 fn main() {
-    // Controlador de fans por software (thread que aplica curva/auto por temperatura).
-    let fan_ctrl: SharedFanController = Arc::new(Mutex::new(fancontrol::FanController::default()));
-    fancontrol::spawn_control_thread(fan_ctrl.clone());
+    // Carrega as configs salvas (curvas/modos definidos anteriormente).
+    let fan_ctrl: SharedFanController = Arc::new(Mutex::new(fancontrol::load_config()));
+
+    // Se o daemon (machctrld) NÃO estiver rodando, o app assume o controle dos
+    // fans com sua própria thread. Se o daemon estiver ativo, deixamos ele
+    // controlar (evita duas threads brigando pelo PWM) — o app só edita a config.
+    if !daemon_is_running() {
+        fancontrol::spawn_control_thread(fan_ctrl.clone());
+    }
 
     tauri::Builder::default()
         .manage(SharedState::default())

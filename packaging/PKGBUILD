@@ -50,9 +50,17 @@ build() {
 package() {
     cd "$srcdir/$_srcdir"
 
-    # Binário compilado
+    # Binário do app (interface)
     install -Dm755 "src-tauri/target/release/machctrl" \
         "$pkgdir/opt/machctrl/machctrl"
+
+    # Binário do daemon (controle de fans em background)
+    install -Dm755 "src-tauri/target/release/machctrld" \
+        "$pkgdir/opt/machctrl/machctrld"
+
+    # Serviço systemd do daemon
+    install -Dm644 "packaging/machctrld.service" \
+        "$pkgdir/usr/lib/systemd/system/machctrld.service"
 
     # Launcher que auto-eleva com sudo NOPASSWD
     install -Dm755 "packaging/machctrl-launcher.sh" \

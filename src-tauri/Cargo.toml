@@ -5,6 +5,16 @@ description = "Monitor e Otimizador de Hardware para Linux"
 authors = ["araujo791"]
 edition = "2021"
 
+# Binário principal (app com interface Tauri)
+[[bin]]
+name = "machctrl"
+path = "src/main.rs"
+
+# Daemon de controle de fans (roda como serviço systemd, sem interface)
+[[bin]]
+name = "machctrld"
+path = "src/daemon.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
