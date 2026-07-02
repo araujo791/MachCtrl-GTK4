@@ -458,7 +458,7 @@ function CpuPage({ t, tr, snap }) {
             </div>
             <div style={{ display: "flex", gap: 30 }}>
               {[[tr("avg_usage"), `${s.usage_pct.toFixed(0)}%`, ACCENT.blue],
-                [tr("package"), s.package_temp_c != null ? `${s.package_temp_c.toFixed(0)}°C` : "—", ACCENT.green],
+                [tr("temperature").toUpperCase(), s.package_temp_c != null ? `${s.package_temp_c.toFixed(0)}°C` : "—", ACCENT.green],
                 [tr("freq").toUpperCase(), `${s.freq_ghz.toFixed(2)} GHz`, t.textDim]].map(([l, v, c]) => (
                 <div key={l} style={{ textAlign: "right" }}>
                   <div style={{ fontSize: 10, color: t.textFaint, fontWeight: 600 }}>{l}</div>
