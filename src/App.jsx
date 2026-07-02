@@ -96,8 +96,27 @@ export default function App() {
   const [active, setActive] = useState("overview");
   const [snap, setSnap] = useState(null);
   const [sysInfo, setSysInfo] = useState(null);
+  const prefsLoaded = useRef(false);
   const t = dark ? THEMES.dark : THEMES.light;
   const tr = (key) => STRINGS[lang][key] || STRINGS.en[key] || key;
+
+  // Carrega preferências salvas (tema, idioma) ao iniciar.
+  useEffect(() => {
+    invoke("load_ui_prefs").then((raw) => {
+      try {
+        const p = JSON.parse(raw || "{}");
+        if (typeof p.dark === "boolean") setDark(p.dark);
+        if (p.lang === "pt-BR" || p.lang === "en") setLang(p.lang);
+      } catch { /* usa padrões */ }
+      prefsLoaded.current = true;
+    }).catch(() => { prefsLoaded.current = true; });
+  }, []);
+
+  // Salva sempre que tema ou idioma mudam (depois do carregamento inicial).
+  useEffect(() => {
+    if (!prefsLoaded.current) return;
+    invoke("save_ui_prefs", { prefs: JSON.stringify({ dark, lang }) }).catch(() => {});
+  }, [dark, lang]);
 
   // históricos pra sparklines
   const cpuHist = useRef([]);

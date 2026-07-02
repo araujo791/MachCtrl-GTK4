@@ -712,6 +712,48 @@ fn daemon_is_running() -> bool {
         .unwrap_or(false)
 }
 
+/// Caminho do arquivo de preferências de UI (tema, idioma). Fica no HOME do
+/// usuário real (não do root), já que o app roda elevado via sudo.
+fn ui_prefs_path() -> std::path::PathBuf {
+    // Descobre o home do usuário original (SUDO_USER), senão usa HOME.
+    let home = std::env::var("SUDO_USER")
+        .ok()
+        .and_then(|user| {
+            std::process::Command::new("getent")
+                .args(["passwd", &user])
+                .output()
+                .ok()
+                .and_then(|o| {
+                    let s = String::from_utf8_lossy(&o.stdout);
+                    s.split(':').nth(5).map(|h| h.to_string())
+                })
+        })
+        .or_else(|| std::env::var("HOME").ok())
+        .unwrap_or_else(|| "/root".to_string());
+    std::path::PathBuf::from(home).join(".config/machctrl/ui.json")
+}
+
+#[tauri::command]
+fn load_ui_prefs() -> String {
+    std::fs::read_to_string(ui_prefs_path()).unwrap_or_else(|_| "{}".to_string())
+}
+
+#[tauri::command]
+fn save_ui_prefs(prefs: String) -> Result<(), String> {
+    let path = ui_prefs_path();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    std::fs::write(&path, prefs).map_err(|e| format!("erro ao salvar preferências: {e}"))?;
+    // garante que o arquivo pertença ao usuário real, não ao root
+    if let Ok(user) = std::env::var("SUDO_USER") {
+        let _ = std::process::Command::new("chown")
+            .args(["-R", &format!("{user}:{user}"), &path.parent().unwrap().to_string_lossy()])
+            .status();
+    }
+    Ok(())
+}
+
 fn main() {
     // Carrega as configs salvas (curvas/modos definidos anteriormente).
     let fan_ctrl: SharedFanController = Arc::new(Mutex::new(fancontrol::load_config()));
@@ -741,6 +783,8 @@ fn main() {
             get_clean_tasks,
             run_clean,
             open_url,
+            load_ui_prefs,
+            save_ui_prefs,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar o MachCtrl");
