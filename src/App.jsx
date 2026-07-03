@@ -35,6 +35,7 @@ const NAV = [
   { id: "memory", key: "nav_memory", icon: MemoryStick, accent: ACCENT.green },
   { id: "disks", key: "nav_disks", icon: HardDrive, accent: ACCENT.cyan },
   { id: "fans", key: "nav_fans", icon: Fan, accent: ACCENT.cyan },
+  { id: "monitor", key: "nav_monitor", icon: Activity, accent: ACCENT.pink },
   { id: "energy", key: "nav_energy", icon: Zap, accent: ACCENT.orange },
   { id: "cleaner", key: "nav_cleaner", icon: Trash2, accent: ACCENT.red },
   // { id: "tune", key: "nav_tune", icon: Gauge, accent: ACCENT.purple }, // oculto até finalizarmos o Ajuste
@@ -123,6 +124,8 @@ export default function App() {
   // históricos pra sparklines
   const cpuHist = useRef([]);
   const cpuHist2 = useRef([]);
+  const coreHist = useRef([]);   // histórico de uso por core: [{t, cores:[{id,pct}], pkgTemp:[...]}]
+  const gpuMonHist = useRef([]); // histórico da GPU: [{t, usage, temp}]
   const ramHist = useRef([]);
   const gpuHist = useRef([]);
   const cpuSparkHist = useRef([]); // por socket na página CPU, mapeado por índice
@@ -147,6 +150,17 @@ export default function App() {
         push(ramHist, s.mem_pct);
         push(gpuHist, s.gpus[0]?.usage_pct ?? 0);
         setSnap(s);
+
+        // Históricos detalhados pro Monitor (60 pontos = ~60s).
+        const MON = 60;
+        const allCores = (s.sockets || []).flatMap((sk) =>
+          (sk.cores || []).map((core) => ({ id: `${sk.socket_id}-${core.id}`, pct: core.pct })));
+        const pkgTemps = (s.sockets || []).map((sk) => sk.package_temp_c || 0);
+        coreHist.current = [...coreHist.current, { cores: allCores, pkgTemps }].slice(-MON);
+        gpuMonHist.current = [...gpuMonHist.current, {
+          usage: s.gpus?.[0]?.usage_pct ?? 0,
+          temp: s.gpus?.[0]?.temp_c ?? 0,
+        }].slice(-MON);
 
         // Alerta de temperatura: dispara se CPU ou GPU passar de 90°C.
         // Só re-alerta 60s após ser dispensado, pra não ficar reaparecendo direto.
@@ -249,6 +263,7 @@ export default function App() {
           {active === "memory" && <MemoryPage t={t} tr={tr} snap={snap} />}
           {active === "disks" && <DisksPage t={t} tr={tr} snap={snap} />}
           {active === "fans" && <FansPage t={t} tr={tr} />}
+          {active === "monitor" && <MonitorPage t={t} tr={tr} coreHist={coreHist.current} gpuMonHist={gpuMonHist.current} snap={snap} />}
           {active === "energy" && <EnergyPage t={t} tr={tr} />}
           {active === "cleaner" && <CleanerPage t={t} tr={tr} lang={lang} />}
           {active === "tune" && <Placeholder t={t} title={tr("tune_title")} msg={tr("tune_msg")} />}
@@ -282,6 +297,127 @@ function WindowControls({ t }) {
 }
 
 // ---------- páginas ----------
+// Monitor: gráficos históricos grandes — uso por core (linhas coloridas) +
+// temperatura de package sobreposta, e um card da GPU (uso + temperatura).
+function MonitorPage({ t, tr, coreHist, gpuMonHist, snap }) {
+  if (!snap) return <Loading t={t} />;
+
+  // paleta pra distinguir muitos cores
+  const palette = [
+    "#3b82f6", "#06b6d4", "#22c55e", "#f59e0b", "#a855f7", "#ec4899",
+    "#ef4444", "#14b8a6", "#eab308", "#6366f1", "#f97316", "#84cc16",
+    "#0ea5e9", "#d946ef", "#10b981", "#fb7185",
+  ];
+  const W = 900, H = 260, PAD = 30;
+  const N = 60; // pontos na janela
+
+  // nº de cores (do último snapshot)
+  const lastFrame = coreHist[coreHist.length - 1];
+  const coreIds = lastFrame ? lastFrame.cores.map((c) => c.id) : [];
+
+  // gera path de uma série (0..100) ao longo do histórico
+  const linePath = (getVal) => {
+    if (coreHist.length < 2) return "";
+    return coreHist.map((frame, i) => {
+      const x = PAD + (i / (N - 1)) * (W - 2 * PAD);
+      const v = getVal(frame);
+      const y = H - PAD - (Math.max(0, Math.min(100, v)) / 100) * (H - 2 * PAD);
+      return `${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
+    }).join(" ");
+  };
+
+  // temperatura de package (média dos sockets) sobreposta, 0..100°C
+  const tempPath = () => {
+    if (coreHist.length < 2) return "";
+    return coreHist.map((frame, i) => {
+      const x = PAD + (i / (N - 1)) * (W - 2 * PAD);
+      const temps = frame.pkgTemps || [];
+      const avg = temps.length ? temps.reduce((a, b) => a + b, 0) / temps.length : 0;
+      const y = H - PAD - (Math.max(0, Math.min(100, avg)) / 100) * (H - 2 * PAD);
+      return `${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
+    }).join(" ");
+  };
+
+  const gpuPath = (key, max) => {
+    if (gpuMonHist.length < 2) return "";
+    return gpuMonHist.map((f, i) => {
+      const x = PAD + (i / (N - 1)) * (W - 2 * PAD);
+      const y = H - PAD - (Math.max(0, Math.min(max, f[key])) / max) * (H - 2 * PAD);
+      return `${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
+    }).join(" ");
+  };
+
+  const grid = () => {
+    const lines = [];
+    for (let p = 0; p <= 100; p += 25) {
+      const y = H - PAD - (p / 100) * (H - 2 * PAD);
+      lines.push(
+        <g key={p}>
+          <line x1={PAD} y1={y} x2={W - PAD} y2={y} stroke={t.stroke} strokeWidth="1" />
+          <text x={PAD - 6} y={y + 3} textAnchor="end" fontSize="9" fill={t.textFaint}>{p}</text>
+        </g>
+      );
+    }
+    return lines;
+  };
+
+  const lastGpu = gpuMonHist[gpuMonHist.length - 1] || { usage: 0, temp: 0 };
+  const avgPkgTemp = (() => {
+    const temps = lastFrame?.pkgTemps || [];
+    return temps.length ? temps.reduce((a, b) => a + b, 0) / temps.length : 0;
+  })();
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      {/* CPU: uso por core + temperatura */}
+      <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <CardHead t={t} icon={Cpu} accent={ACCENT.blue} title={`CPU · ${coreIds.length} ${tr("threads")}`} />
+          <div style={{ display: "flex", gap: 16, fontSize: 12 }}>
+            <span style={{ color: t.textDim }}>{tr("avg_usage")}: <b style={{ color: ACCENT.blue }}>{snap.cpu_usage.toFixed(0)}%</b></span>
+            <span style={{ color: t.textDim }}>{tr("temperature")}: <b style={{ color: ACCENT.orange }}>{avgPkgTemp.toFixed(0)}°C</b></span>
+          </div>
+        </div>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto" }}>
+          {grid()}
+          {/* uma linha fina por core */}
+          {coreIds.map((id, idx) => (
+            <path key={id} d={linePath((frame) => frame.cores.find((c) => c.id === id)?.pct ?? 0)}
+              fill="none" stroke={palette[idx % palette.length]} strokeWidth="1.2" opacity="0.7" />
+          ))}
+          {/* temperatura de package sobreposta (tracejada, grossa) */}
+          <path d={tempPath()} fill="none" stroke={ACCENT.orange} strokeWidth="2.5"
+            strokeDasharray="6 3" opacity="0.95" />
+        </svg>
+        <div style={{ display: "flex", gap: 16, marginTop: 8, fontSize: 11, color: t.textFaint }}>
+          <span>▬ {tr("activity")} (%) — {tr("cores")}</span>
+          <span style={{ color: ACCENT.orange }}>┈ {tr("temperature")} (°C)</span>
+        </div>
+      </div>
+
+      {/* GPU: uso + temperatura */}
+      <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <CardHead t={t} icon={Activity} accent={ACCENT.purple} title={snap.gpus?.[0]?.name || "GPU"} />
+          <div style={{ display: "flex", gap: 16, fontSize: 12 }}>
+            <span style={{ color: t.textDim }}>{tr("avg_usage")}: <b style={{ color: ACCENT.purple }}>{lastGpu.usage.toFixed(0)}%</b></span>
+            <span style={{ color: t.textDim }}>{tr("temperature")}: <b style={{ color: ACCENT.orange }}>{lastGpu.temp.toFixed(0)}°C</b></span>
+          </div>
+        </div>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto" }}>
+          {grid()}
+          <path d={gpuPath("usage", 100)} fill="none" stroke={ACCENT.purple} strokeWidth="2.5" />
+          <path d={gpuPath("temp", 100)} fill="none" stroke={ACCENT.orange} strokeWidth="2.5" strokeDasharray="6 3" />
+        </svg>
+        <div style={{ display: "flex", gap: 16, marginTop: 8, fontSize: 11, color: t.textFaint }}>
+          <span style={{ color: ACCENT.purple }}>▬ {tr("avg_usage")} (%)</span>
+          <span style={{ color: ACCENT.orange }}>┈ {tr("temperature")} (°C)</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Overview({ t, tr, snap, sysInfo, cpuHist, cpuHist2, ramHist, gpuHist }) {
   if (!snap) return <Loading t={t} />;
   const gpu = snap.gpus[0];
