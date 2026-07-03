@@ -67,6 +67,7 @@ export const STRINGS = {
     write: "Escrita",
     // fans
     mode: "modo",
+    pwm_current: "PWM atual",
     auto: "Automático",
     manual: "Manual",
     max: "Máximo",
@@ -163,6 +164,7 @@ export const STRINGS = {
     read: "Read",
     write: "Write",
     mode: "mode",
+    pwm_current: "Current PWM",
     auto: "Automatic",
     manual: "Manual",
     max: "Maximum",

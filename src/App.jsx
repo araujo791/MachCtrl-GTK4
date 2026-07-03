@@ -776,7 +776,7 @@ function FansPage({ t, tr }) {
                     <span style={{ fontWeight: 700, fontSize: 14 }}>{displayName}</span>
                   </div>
                   <div style={{ color: t.textFaint, fontSize: 11, marginTop: 2 }}>
-                    modo: <span style={{ color: mode === "auto" ? ACCENT.green : mode === "max" ? ACCENT.red : ACCENT.blue, fontWeight: 600 }}>
+                    {tr("mode")}: <span style={{ color: mode === "auto" ? ACCENT.green : mode === "max" ? ACCENT.red : ACCENT.blue, fontWeight: 600 }}>
                       {mode === "auto" ? tr("auto") : mode === "max" ? tr("max") : tr("manual")}
                     </span>
                   </div>
@@ -791,7 +791,7 @@ function FansPage({ t, tr }) {
             {/* barra de PWM atual */}
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: t.textFaint, marginBottom: 4 }}>
-                <span>PWM atual</span><span>{f.pct}%</span>
+                <span>{tr("pwm_current")}</span><span>{f.pct}%</span>
               </div>
               <div style={{ height: 6, background: t.panel, borderRadius: 3, overflow: "hidden" }}>
                 <div style={{ height: "100%", width: `${f.pct}%`, background: role.color, borderRadius: 3, transition: "width 0.5s" }} />
