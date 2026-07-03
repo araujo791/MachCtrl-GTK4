@@ -764,7 +764,28 @@ fn open_url(url: String) -> Result<(), String> {
         }
     };
 
-    // 1) Openers genéricos (respeitam o navegador padrão do usuário).
+    // 1) Tenta o navegador PADRÃO do usuário (via xdg-settings). Se for um
+    // .desktop Flatpak (ex: com.google.Chrome.desktop), roda via flatpak run.
+    let default_browser = std::process::Command::new("sudo")
+        .args(["-u", real_user.as_deref().unwrap_or("root"), "env",
+            &format!("XDG_RUNTIME_DIR={runtime_dir}"),
+            &format!("DBUS_SESSION_BUS_ADDRESS={dbus}"),
+            "xdg-settings", "get", "default-web-browser"])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty());
+    if let Some(desktop) = &default_browser {
+        // se for Flatpak (.desktop com app-id estilo com.google.Chrome)
+        let app_id = desktop.trim_end_matches(".desktop");
+        if app_id.contains('.') && app_id.split('.').count() >= 3 {
+            if run_as_user(&["flatpak", "run", app_id, &url]) {
+                return Ok(());
+            }
+        }
+    }
+
+    // 2) Openers genéricos (respeitam o navegador padrão do usuário).
     for opener in [["gio", "open"], ["xdg-open", ""], ["kde-open", ""], ["kde-open5", ""]] {
         let mut cmd: Vec<&str> = vec![opener[0]];
         if !opener[1].is_empty() { cmd.push(opener[1]); }
@@ -774,7 +795,7 @@ fn open_url(url: String) -> Result<(), String> {
         }
     }
 
-    // 2) Navegadores nativos diretos.
+    // 3) Navegadores nativos diretos.
     for browser in ["firefox", "chromium", "google-chrome-stable", "google-chrome",
                     "vivaldi-stable", "vivaldi", "brave", "microsoft-edge-stable", "opera"] {
         if run_as_user(&[browser, &url]) {
@@ -782,8 +803,8 @@ fn open_url(url: String) -> Result<(), String> {
         }
     }
 
-    // 3) Navegadores instalados via Flatpak (flatpak run <app-id> <url>).
-    for app_id in ["org.mozilla.firefox", "com.google.Chrome", "org.chromium.Chromium",
+    // 4) Navegadores instalados via Flatpak (flatpak run <app-id> <url>).
+    for app_id in ["com.google.Chrome", "org.mozilla.firefox", "org.chromium.Chromium",
                    "com.brave.Browser", "com.vivaldi.Vivaldi", "com.microsoft.Edge",
                    "com.opera.Opera", "org.gnome.Epiphany"] {
         if run_as_user(&["flatpak", "run", app_id, &url]) {
