@@ -1,0 +1,62 @@
+# Maintainer: araujo791 <https://github.com/araujo791>
+pkgname=machctrl-bin
+pkgver=3.0.0
+pkgrel=1
+pkgdesc="Monitor e Otimizador de Hardware para Linux — CPU, GPU, RAM, Fans, Temperatura (binário pré-compilado)"
+arch=('x86_64')
+url="https://github.com/araujo791/MachCtrl-GTK4"
+license=('MIT')
+depends=(
+    'webkit2gtk-4.1'
+    'gtk3'
+    'libappindicator-gtk3'
+    'librsvg'
+    'lm_sensors'
+    'dmidecode'
+    'sudo'
+)
+optdepends=(
+    'nvidia-utils: suporte a GPU NVIDIA (fan control, temperatura)'
+)
+# Instala/atualiza o MachCtrl. Substitui tanto a v2.0 quanto a variante do fonte.
+provides=('machctrl')
+conflicts=('machctrl' 'machctrl-git')
+replaces=('machctrl-electron')
+install=machctrl.install
+
+# Baixa os binários + assets da release do GitHub (pré-compilados).
+# Ajuste a tag/URL conforme a release publicada.
+source=(
+    "machctrl-$pkgver.tar.gz::https://github.com/araujo791/MachCtrl-GTK4/releases/download/v$pkgver/machctrl-$pkgver-x86_64.tar.gz"
+)
+sha256sums=('SKIP')
+
+package() {
+    cd "$srcdir"
+
+    # Estrutura esperada dentro do tarball da release:
+    #   machctrl            (binário do app)
+    #   machctrld           (binário do daemon)
+    #   app-icon.png        (ícone)
+    #   machctrl-launcher.sh
+    #   machctrl.desktop
+    #   machctrld.service
+
+    install -Dm755 "machctrl"   "$pkgdir/opt/machctrl/machctrl"
+    install -Dm755 "machctrld"  "$pkgdir/opt/machctrl/machctrld"
+    install -Dm755 "machctrl-launcher.sh" "$pkgdir/usr/bin/machctrl"
+
+    install -Dm644 "app-icon.png" "$pkgdir/usr/share/pixmaps/machctrl.png"
+    install -Dm644 "app-icon.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/machctrl.png"
+    install -Dm644 "machctrl.desktop" "$pkgdir/usr/share/applications/machctrl.desktop"
+    install -Dm644 "machctrld.service" "$pkgdir/usr/lib/systemd/system/machctrld.service"
+
+    # sudoers NOPASSWD (abre sem senha)
+    install -dm750 "$pkgdir/etc/sudoers.d"
+    cat > "$pkgdir/etc/sudoers.d/machctrl" << 'SUDOERS'
+# MachCtrl: permite abrir o app com privilégios sem pedir senha.
+%wheel ALL=(root) NOPASSWD: SETENV: /opt/machctrl/machctrl
+%sudo  ALL=(root) NOPASSWD: SETENV: /opt/machctrl/machctrl
+SUDOERS
+    chmod 440 "$pkgdir/etc/sudoers.d/machctrl"
+}
