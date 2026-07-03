@@ -155,7 +155,8 @@ export default function App() {
   }, []);
 
   return (
-    <div style={{ background: t.bg, height: "100%", display: "flex", color: t.text }}>
+    <div style={{ background: t.bg, height: "100%", display: "flex", color: t.text,
+      border: `1px solid ${t.stroke}`, borderRadius: 10, overflow: "hidden", boxSizing: "border-box" }}>
       {/* Sidebar */}
       <div style={{ width: 92, background: t.panel, borderRight: `1px solid ${t.stroke}`,
         display: "flex", flexDirection: "column", alignItems: "center", padding: "18px 0", gap: 4 }}>
