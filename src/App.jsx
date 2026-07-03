@@ -10,7 +10,7 @@ import {
 import {
   LayoutDashboard, Cpu, MemoryStick, HardDrive, Fan, Zap,
   Trash2, Gauge, Info, Sun, Moon, Activity, Usb, Database,
-  ArrowDown, ArrowUp, Minus, Square, X, Heart,
+  ArrowDown, ArrowUp, Minus, Square, X, Heart, AlertTriangle,
 } from "lucide-react";
 
 // ---------- temas ----------
@@ -95,6 +95,8 @@ export default function App() {
   const [lang, setLang] = useState(detectLang());
   const [active, setActive] = useState("overview");
   const [snap, setSnap] = useState(null);
+  const [tempAlert, setTempAlert] = useState(null); // {kind:'cpu'|'gpu', temp} quando >90°C
+  const alertDismissedRef = useRef(0); // timestamp de quando foi dispensado (evita spam)
   const [sysInfo, setSysInfo] = useState(null);
   const prefsLoaded = useRef(false);
   const t = dark ? THEMES.dark : THEMES.light;
@@ -145,6 +147,17 @@ export default function App() {
         push(ramHist, s.mem_pct);
         push(gpuHist, s.gpus[0]?.usage_pct ?? 0);
         setSnap(s);
+
+        // Alerta de temperatura: dispara se CPU ou GPU passar de 90°C.
+        // Só re-alerta 60s após ser dispensado, pra não ficar reaparecendo direto.
+        const THRESHOLD = 90;
+        const cpuT = Math.max(...(s.sockets || []).map((k) => k.package_temp_c || 0), s.cpu_temp_c || 0);
+        const gpuT = s.gpus?.[0]?.temp_c || 0;
+        const cooldownOk = Date.now() - alertDismissedRef.current > 60000;
+        if (cooldownOk) {
+          if (cpuT >= THRESHOLD) setTempAlert({ kind: "cpu", temp: cpuT });
+          else if (gpuT >= THRESHOLD) setTempAlert({ kind: "gpu", temp: gpuT });
+        }
       } catch (e) {
         // silencioso; backend pode ainda não estar pronto
       }
@@ -157,6 +170,26 @@ export default function App() {
   return (
     <div style={{ background: t.bg, height: "100%", display: "flex", color: t.text,
       border: `1px solid ${t.stroke}`, borderRadius: 10, overflow: "hidden", boxSizing: "border-box" }}>
+      {/* Banner de alerta de temperatura alta (>90°C) */}
+      {tempAlert && (
+        <div style={{ position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)",
+          zIndex: 2000, display: "flex", alignItems: "center", gap: 12, padding: "12px 18px",
+          background: "#1a0f0f", border: `1px solid ${ACCENT.red}`, borderRadius: 12,
+          boxShadow: `0 8px 32px ${ACCENT.red}44`, maxWidth: 460 }}>
+          <AlertTriangle size={20} color={ACCENT.red} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>{tr("temp_alert_title")}</div>
+            <div style={{ fontSize: 12, color: "#e8b0b0", marginTop: 1 }}>
+              {tempAlert.kind === "cpu" ? tr("temp_alert_cpu") : tr("temp_alert_gpu")} {tempAlert.temp.toFixed(0)}°C
+            </div>
+          </div>
+          <button onClick={() => { setTempAlert(null); alertDismissedRef.current = Date.now(); }}
+            style={{ width: 26, height: 26, borderRadius: 7, border: "none", background: "transparent",
+              cursor: "pointer", display: "grid", placeItems: "center", color: "#e8b0b0" }}>
+            <X size={15} />
+          </button>
+        </div>
+      )}
       {/* Sidebar */}
       <div style={{ width: 92, background: t.panel, borderRight: `1px solid ${t.stroke}`,
         display: "flex", flexDirection: "column", alignItems: "center", padding: "18px 0", gap: 4 }}>
@@ -708,6 +741,7 @@ function FansPage({ t, tr }) {
   const [modes, setModes] = useState({}); // id -> 'auto' | 'manual' | 'max'
   const [manualPct, setManualPct] = useState({}); // id -> valor do slider
   const [curveModal, setCurveModal] = useState(null); // fan cujo modal de curva está aberto
+  const [maxConfirm, setMaxConfirm] = useState(null); // fan aguardando confirmação de Máximo
   const load = useCallback(() => {
     invoke("get_fans")
       .then((list) => setFans((list || []).slice().sort((a, b) => a.id.localeCompare(b.id))))
@@ -730,7 +764,7 @@ function FansPage({ t, tr }) {
   if (fans === null) return <Loading t={t} />;
   if (fans.length === 0) return <Empty t={t} msg={tr("no_fans")} />;
 
-  const setMode = (f, mode) => {
+  const applyMode = (f, mode) => {
     setModes((m) => ({ ...m, [f.id]: mode }));
     const base = { fanId: f.id, pwmPath: f.pwm_path, pwmEnablePath: f.pwm_enable_path, chip: f.chip };
     if (mode === "auto") {
@@ -742,6 +776,15 @@ function FansPage({ t, tr }) {
       invoke("set_fan", { ...base, speed: v, max: false }).catch(() => {});
     }
     // modo "curve" é aplicado pelo modal (set_fan_curve)
+  };
+
+  const setMode = (f, mode) => {
+    // Máximo pode assustar pelo barulho — pede confirmação antes.
+    if (mode === "max") {
+      setMaxConfirm(f);
+      return;
+    }
+    applyMode(f, mode);
   };
 
   // Pré-computa o nome de exibição de cada fan (CPU 1, GPU, Sistema 2...) de forma
@@ -845,6 +888,43 @@ function FansPage({ t, tr }) {
         <FanCurveModal t={t} tr={tr} fan={curveModal} role={fanRole(curveModal)}
           displayName={displayNames[curveModal.id]} onClose={() => setCurveModal(null)} />
       )}
+
+      {maxConfirm && (
+        <ConfirmModal t={t}
+          title={tr("max_confirm_title")}
+          message={tr("max_confirm_msg")}
+          confirmLabel={tr("max")}
+          cancelLabel={tr("cancel")}
+          danger
+          onConfirm={() => { applyMode(maxConfirm, "max"); setMaxConfirm(null); }}
+          onCancel={() => setMaxConfirm(null)} />
+      )}
+    </div>
+  );
+}
+
+// Modal genérico de confirmação (usado pra ações que merecem cuidado, ex: Máximo).
+function ConfirmModal({ t, title, message, confirmLabel, cancelLabel, danger, onConfirm, onCancel }) {
+  return (
+    <div onClick={onCancel} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)",
+      display: "grid", placeItems: "center", zIndex: 1000 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: t.card, border: `1px solid ${t.stroke}`,
+        borderRadius: 16, padding: 24, maxWidth: 380, boxShadow: "0 20px 60px rgba(0,0,0,0.4)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center",
+            background: `${danger ? ACCENT.red : ACCENT.blue}22` }}>
+            <AlertTriangle size={20} color={danger ? ACCENT.red : ACCENT.blue} />
+          </div>
+          <div style={{ fontSize: 16, fontWeight: 800 }}>{title}</div>
+        </div>
+        <div style={{ fontSize: 13, color: t.textDim, lineHeight: 1.5, marginBottom: 20 }}>{message}</div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button onClick={onCancel} style={{ padding: "10px 18px", borderRadius: 10, border: `1px solid ${t.stroke}`,
+            background: "transparent", color: t.textDim, fontWeight: 700, cursor: "pointer" }}>{cancelLabel}</button>
+          <button onClick={onConfirm} style={{ padding: "10px 20px", borderRadius: 10, border: "none",
+            background: danger ? ACCENT.red : ACCENT.blue, color: "#fff", fontWeight: 700, cursor: "pointer" }}>{confirmLabel}</button>
+        </div>
+      </div>
     </div>
   );
 }
