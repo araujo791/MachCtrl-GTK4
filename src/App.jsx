@@ -10,7 +10,7 @@ import {
 import {
   LayoutDashboard, Cpu, MemoryStick, HardDrive, Fan, Zap,
   Trash2, Gauge, Info, Sun, Moon, Activity, Usb, Database,
-  ArrowDown, ArrowUp, Minus, Square, X, Heart,
+  ArrowDown, ArrowUp, Minus, Square, X, Heart, ChevronDown,
 } from "lucide-react";
 
 // ---------- temas ----------
@@ -229,8 +229,8 @@ export default function App() {
 // Controles de janela (minimizar / maximizar / fechar) estilo v2.0.
 function WindowControls({ t }) {
   const win = getCurrentWindow();
-  const btn = (onClick, children, hoverBg) => (
-    <button onClick={onClick} style={{
+  const btn = (onClick, children, hoverBg, title) => (
+    <button onClick={onClick} title={title} style={{
       width: 30, height: 30, borderRadius: 8, border: "none", background: "transparent",
       cursor: "pointer", display: "grid", placeItems: "center", color: t.textDim,
     }}
@@ -241,6 +241,7 @@ function WindowControls({ t }) {
   );
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 2, marginLeft: 4 }}>
+      {btn(() => invoke("hide_to_tray").catch(() => {}), <ChevronDown size={16} />, null, "Minimizar para a bandeja")}
       {btn(() => win.minimize(), <Minus size={15} />)}
       {btn(() => win.toggleMaximize(), <Square size={12} />)}
       {btn(() => win.close(), <X size={16} />, "#ef4444")}

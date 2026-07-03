@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager, WindowEvent,
+    Manager,
 };
 
 // ---------------------------------------------------------------------------
@@ -902,6 +902,12 @@ fn save_ui_prefs(prefs: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Esconde a janela na bandeja (chamado pelo botão "minimizar pro tray").
+#[tauri::command]
+fn hide_to_tray(window: tauri::Window) {
+    let _ = window.hide();
+}
+
 fn main() {
     // Carrega as configs salvas (curvas/modos definidos anteriormente).
     let fan_ctrl: SharedFanController = Arc::new(Mutex::new(fancontrol::load_config()));
@@ -961,15 +967,6 @@ fn main() {
 
             Ok(())
         })
-        .on_window_event(|window, event| {
-            // Fechar a janela ESCONDE em vez de encerrar (o daemon segue rodando,
-            // e o app fica acessível pela bandeja). Sair de verdade só pelo menu
-            // do tray ("Sair").
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                let _ = window.hide();
-                api.prevent_close();
-            }
-        })
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
             get_system_info,
@@ -987,6 +984,7 @@ fn main() {
             open_url,
             load_ui_prefs,
             save_ui_prefs,
+            hide_to_tray,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar o MachCtrl");
