@@ -928,9 +928,17 @@ fn main() {
             let quit_item = MenuItem::with_id(app, "quit", "Sair", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open_item, &quit_item])?;
 
+            let icon = match app.default_window_icon() {
+                Some(i) => i.clone(),
+                None => {
+                    eprintln!("machctrl: AVISO — sem ícone padrão pro tray");
+                    return Ok(());
+                }
+            };
+
             // Ícone na bandeja do sistema.
-            let _tray = TrayIconBuilder::with_id("main-tray")
-                .icon(app.default_window_icon().unwrap().clone())
+            let tray_result = TrayIconBuilder::with_id("main-tray")
+                .icon(icon)
                 .tooltip("MachCtrl")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
@@ -963,7 +971,12 @@ fn main() {
                         }
                     }
                 })
-                .build(app)?;
+                .build(app);
+
+            match tray_result {
+                Ok(_) => eprintln!("machctrl: tray criado com sucesso"),
+                Err(e) => eprintln!("machctrl: ERRO ao criar tray: {e}"),
+            }
 
             Ok(())
         })
