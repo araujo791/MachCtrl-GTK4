@@ -35,7 +35,6 @@ const NAV = [
   { id: "memory", key: "nav_memory", icon: MemoryStick, accent: ACCENT.green },
   { id: "disks", key: "nav_disks", icon: HardDrive, accent: ACCENT.cyan },
   { id: "fans", key: "nav_fans", icon: Fan, accent: ACCENT.cyan },
-  { id: "monitor", key: "nav_monitor", icon: Activity, accent: ACCENT.pink },
   { id: "energy", key: "nav_energy", icon: Zap, accent: ACCENT.orange },
   { id: "cleaner", key: "nav_cleaner", icon: Trash2, accent: ACCENT.red },
   // { id: "tune", key: "nav_tune", icon: Gauge, accent: ACCENT.purple }, // oculto até finalizarmos o Ajuste
@@ -124,8 +123,6 @@ export default function App() {
   // históricos pra sparklines
   const cpuHist = useRef([]);
   const cpuHist2 = useRef([]);
-  const coreHist = useRef([]);   // histórico de uso por core: [{t, cores:[{id,pct}], pkgTemp:[...]}]
-  const gpuMonHist = useRef([]); // histórico da GPU: [{t, usage, temp}]
   const ramHist = useRef([]);
   const gpuHist = useRef([]);
   const cpuSparkHist = useRef([]); // por socket na página CPU, mapeado por índice
@@ -150,17 +147,6 @@ export default function App() {
         push(ramHist, s.mem_pct);
         push(gpuHist, s.gpus[0]?.usage_pct ?? 0);
         setSnap(s);
-
-        // Históricos detalhados pro Monitor (60 pontos = ~60s).
-        const MON = 60;
-        const allCores = (s.sockets || []).flatMap((sk) =>
-          (sk.cores || []).map((core) => ({ id: `${sk.socket_id}-${core.id}`, pct: core.pct })));
-        const pkgTemps = (s.sockets || []).map((sk) => sk.package_temp_c || 0);
-        coreHist.current = [...coreHist.current, { cores: allCores, pkgTemps }].slice(-MON);
-        gpuMonHist.current = [...gpuMonHist.current, {
-          usage: s.gpus?.[0]?.usage_pct ?? 0,
-          temp: s.gpus?.[0]?.temp_c ?? 0,
-        }].slice(-MON);
 
         // Alerta de temperatura: dispara se CPU ou GPU passar de 90°C.
         // Só re-alerta 60s após ser dispensado, pra não ficar reaparecendo direto.
@@ -263,7 +249,6 @@ export default function App() {
           {active === "memory" && <MemoryPage t={t} tr={tr} snap={snap} />}
           {active === "disks" && <DisksPage t={t} tr={tr} snap={snap} />}
           {active === "fans" && <FansPage t={t} tr={tr} />}
-          {active === "monitor" && <MonitorPage t={t} tr={tr} coreHist={coreHist.current} gpuMonHist={gpuMonHist.current} snap={snap} />}
           {active === "energy" && <EnergyPage t={t} tr={tr} />}
           {active === "cleaner" && <CleanerPage t={t} tr={tr} lang={lang} />}
           {active === "tune" && <Placeholder t={t} title={tr("tune_title")} msg={tr("tune_msg")} />}
@@ -297,138 +282,6 @@ function WindowControls({ t }) {
 }
 
 // ---------- páginas ----------
-// Monitor: gráficos históricos suaves estilo GNOME — uso por core (linhas finas
-// suaves) + temperatura, e um card da GPU. Suavização por spline; memoizado.
-function smoothPath(points) {
-  // points: [{x, y}] → path com curvas suaves (Catmull-Rom → Bézier cúbica)
-  if (points.length < 2) return "";
-  if (points.length === 2) return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
-  let d = `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
-  for (let i = 0; i < points.length - 1; i++) {
-    const p0 = points[i === 0 ? 0 : i - 1];
-    const p1 = points[i];
-    const p2 = points[i + 1];
-    const p3 = points[i + 2 < points.length ? i + 2 : i + 1];
-    const cp1x = p1.x + (p2.x - p0.x) / 6;
-    const cp1y = p1.y + (p2.y - p0.y) / 6;
-    const cp2x = p2.x - (p3.x - p1.x) / 6;
-    const cp2y = p2.y - (p3.y - p1.y) / 6;
-    d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
-  }
-  return d;
-}
-
-const MonitorChart = React.memo(function MonitorChart({ t, series, N, maxY = 100 }) {
-  // series: [{ key, color, width, dash, opacity, values:[num] }]
-  const W = 900, H = 260, PAD = 30;
-  const toPoints = (values) => values.map((v, i) => ({
-    x: PAD + (i / (N - 1)) * (W - 2 * PAD),
-    y: H - PAD - (Math.max(0, Math.min(maxY, v)) / maxY) * (H - 2 * PAD),
-  }));
-  const grid = [];
-  for (let p = 0; p <= 100; p += 25) {
-    const y = H - PAD - (p / 100) * (H - 2 * PAD);
-    grid.push(
-      <g key={p}>
-        <line x1={PAD} y1={y} x2={W - PAD} y2={y} stroke={t.stroke} strokeWidth="1" />
-        <text x={PAD - 6} y={y + 3} textAnchor="end" fontSize="9" fill={t.textFaint}>{p}</text>
-      </g>
-    );
-  }
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto" }}>
-      {grid}
-      {series.map((s) => (
-        <path key={s.key} d={smoothPath(toPoints(s.values))} fill="none"
-          stroke={s.color} strokeWidth={s.width} strokeDasharray={s.dash || undefined}
-          strokeLinecap="round" strokeLinejoin="round" opacity={s.opacity ?? 1} />
-      ))}
-    </svg>
-  );
-});
-
-function MonitorPage({ t, tr, coreHist, gpuMonHist, snap }) {
-  if (!snap) return <Loading t={t} />;
-  const N = 60;
-
-  const coreColor = (idx, total) => {
-    const hue = Math.round((idx / Math.max(1, total)) * 360);
-    return `hsl(${hue}, 65%, ${idx % 2 === 0 ? 58 : 46}%)`;
-  };
-
-  const lastFrame = coreHist[coreHist.length - 1];
-  const coreIds = lastFrame ? lastFrame.cores.map((c) => c.id) : [];
-  const many = coreIds.length > 32;
-
-  // séries de CPU: uma por core (fina, suave) + média + temperatura
-  const cpuSeries = coreIds.map((id, idx) => ({
-    key: id, color: coreColor(idx, coreIds.length),
-    width: many ? 0.9 : 1.3, opacity: many ? 0.5 : 0.65,
-    values: coreHist.map((f) => f.cores.find((c) => c.id === id)?.pct ?? 0),
-  }));
-  cpuSeries.push({
-    key: "__avg", color: ACCENT.blue, width: 2.4, opacity: 0.95,
-    values: coreHist.map((f) => {
-      const cs = f.cores || [];
-      return cs.length ? cs.reduce((a, c) => a + c.pct, 0) / cs.length : 0;
-    }),
-  });
-  cpuSeries.push({
-    key: "__temp", color: ACCENT.orange, width: 2.4, dash: "6 3", opacity: 0.95,
-    values: coreHist.map((f) => {
-      const ts = f.pkgTemps || [];
-      return ts.length ? ts.reduce((a, b) => a + b, 0) / ts.length : 0;
-    }),
-  });
-
-  const gpuSeries = [
-    { key: "gpu-usage", color: ACCENT.purple, width: 2.4, values: gpuMonHist.map((f) => f.usage) },
-    { key: "gpu-temp", color: ACCENT.orange, width: 2.4, dash: "6 3", values: gpuMonHist.map((f) => f.temp) },
-  ];
-
-  const avgPkgTemp = (() => {
-    const ts = lastFrame?.pkgTemps || [];
-    return ts.length ? ts.reduce((a, b) => a + b, 0) / ts.length : 0;
-  })();
-  const lastGpu = gpuMonHist[gpuMonHist.length - 1] || { usage: 0, temp: 0 };
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: 20 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <CardHead t={t} icon={Cpu} accent={ACCENT.blue} title={`CPU · ${coreIds.length} ${tr("threads")}`} />
-          <div style={{ display: "flex", gap: 16, fontSize: 12 }}>
-            <span style={{ color: t.textDim }}>{tr("avg_usage")}: <b style={{ color: ACCENT.blue }}>{snap.cpu_usage.toFixed(0)}%</b></span>
-            <span style={{ color: t.textDim }}>{tr("temperature")}: <b style={{ color: ACCENT.orange }}>{avgPkgTemp.toFixed(0)}°C</b></span>
-          </div>
-        </div>
-        <MonitorChart t={t} series={cpuSeries} N={N} />
-        <div style={{ display: "flex", gap: 16, marginTop: 8, fontSize: 11, color: t.textFaint }}>
-          <span style={{ color: ACCENT.blue }}>▬ {tr("avg_usage")} (%)</span>
-          <span>▬ {tr("cores")} (%)</span>
-          <span style={{ color: ACCENT.orange }}>┈ {tr("temperature")} (°C)</span>
-        </div>
-      </div>
-
-      <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: 20 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <CardHead t={t} icon={Activity} accent={ACCENT.purple} title={snap.gpus?.[0]?.name || "GPU"} />
-          <div style={{ display: "flex", gap: 16, fontSize: 12 }}>
-            <span style={{ color: t.textDim }}>{tr("avg_usage")}: <b style={{ color: ACCENT.purple }}>{lastGpu.usage.toFixed(0)}%</b></span>
-            <span style={{ color: t.textDim }}>{tr("temperature")}: <b style={{ color: ACCENT.orange }}>{lastGpu.temp.toFixed(0)}°C</b></span>
-          </div>
-        </div>
-        <MonitorChart t={t} series={gpuSeries} N={N} />
-        <div style={{ display: "flex", gap: 16, marginTop: 8, fontSize: 11, color: t.textFaint }}>
-          <span style={{ color: ACCENT.purple }}>▬ {tr("avg_usage")} (%)</span>
-          <span style={{ color: ACCENT.orange }}>┈ {tr("temperature")} (°C)</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
 function Overview({ t, tr, snap, sysInfo, cpuHist, cpuHist2, ramHist, gpuHist }) {
   if (!snap) return <Loading t={t} />;
   const gpu = snap.gpus[0];
