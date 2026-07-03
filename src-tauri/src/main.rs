@@ -707,9 +707,9 @@ fn run_clean(task_id: String) -> CleanResultDto {
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
     // O app roda como root (sudo). Pra abrir o navegador na sessão gráfica do
-    // usuário, rodamos como ele com as variáveis de sessão. O xdg-open no KDE
-    // moderno é problemático (tenta kfmclient, que não existe mais), então
-    // tentamos uma cadeia de openers: gio → kde-open → xdg-open → navegadores.
+    // usuário, rodamos como ele com as variáveis de sessão. Tentamos uma cadeia
+    // de openers que inclui navegadores nativos E Flatpak (que não têm binário
+    // 'firefox' no PATH — são 'flatpak run org.mozilla.firefox').
     let real_user = std::env::var("SUDO_USER").ok().filter(|u| !u.is_empty() && u != "root");
 
     let uid = real_user
@@ -728,52 +728,66 @@ fn open_url(url: String) -> Result<(), String> {
     let runtime_dir = format!("/run/user/{uid}");
     let dbus = format!("unix:path=/run/user/{uid}/bus");
 
-    // Openers em ordem de preferência (gio funciona em GNOME/KDE modernos).
-    let openers: &[&[&str]] = &[
-        &["gio", "open"],
-        &["kde-open", ""],
-        &["kde-open5", ""],
-        &["xdg-open", ""],
-        &["firefox", ""],
-        &["chromium", ""],
-        &["google-chrome-stable", ""],
-        &["vivaldi", ""],
-        &["brave", ""],
-    ];
-
-    for opener in openers {
-        let cmd_name = opener[0];
-        // monta os args: [cmd, subcmd?, url]
-        let mut args: Vec<String> = vec![];
-        if let Some(user) = &real_user {
-            args.extend(["-u".into(), user.clone(), "env".into(),
+    // Roda um comando (com seus args) como o usuário real, com o ambiente
+    // gráfico da sessão dele. Retorna true se o processo não morreu na hora.
+    let run_as_user = |cmd_args: &[&str]| -> bool {
+        let mut full: Vec<String> = Vec::new();
+        let program = if real_user.is_some() {
+            let user = real_user.as_ref().unwrap();
+            full.extend([
+                "-u".into(), user.clone(), "env".into(),
                 format!("DISPLAY={display}"),
                 format!("WAYLAND_DISPLAY={wayland}"),
                 format!("XDG_RUNTIME_DIR={runtime_dir}"),
                 format!("DBUS_SESSION_BUS_ADDRESS={dbus}"),
-                cmd_name.into()]);
+            ]);
+            full.extend(cmd_args.iter().map(|s| s.to_string()));
+            "sudo"
         } else {
-            args.push(cmd_name.into());
-        }
-        if !opener[1].is_empty() {
-            args.push(opener[1].into());
-        }
-        args.push(url.clone());
-
-        let program = if real_user.is_some() { "sudo" } else { cmd_name };
-        let spawn_args: Vec<&str> = if real_user.is_some() {
-            args.iter().map(|s| s.as_str()).collect()
-        } else {
-            args[1..].iter().map(|s| s.as_str()).collect()
+            full.extend(cmd_args.iter().map(|s| s.to_string()));
+            // sem sudo: o primeiro item é o programa
+            cmd_args.first().copied().unwrap_or("")
         };
-
+        let spawn_args: Vec<&str> = if real_user.is_some() {
+            full.iter().map(|s| s.as_str()).collect()
+        } else {
+            full.iter().skip(1).map(|s| s.as_str()).collect()
+        };
         if let Ok(mut child) = std::process::Command::new(program).args(&spawn_args).spawn() {
-            // dá um instante e verifica se não morreu imediatamente
             std::thread::sleep(std::time::Duration::from_millis(400));
             match child.try_wait() {
-                Ok(Some(status)) if !status.success() => continue, // falhou, tenta o próximo
-                _ => return Ok(()), // rodando ou terminou com sucesso
+                Ok(Some(status)) if !status.success() => false,
+                _ => true,
             }
+        } else {
+            false
+        }
+    };
+
+    // 1) Openers genéricos (respeitam o navegador padrão do usuário).
+    for opener in [["gio", "open"], ["xdg-open", ""], ["kde-open", ""], ["kde-open5", ""]] {
+        let mut cmd: Vec<&str> = vec![opener[0]];
+        if !opener[1].is_empty() { cmd.push(opener[1]); }
+        cmd.push(&url);
+        if run_as_user(&cmd) {
+            return Ok(());
+        }
+    }
+
+    // 2) Navegadores nativos diretos.
+    for browser in ["firefox", "chromium", "google-chrome-stable", "google-chrome",
+                    "vivaldi-stable", "vivaldi", "brave", "microsoft-edge-stable", "opera"] {
+        if run_as_user(&[browser, &url]) {
+            return Ok(());
+        }
+    }
+
+    // 3) Navegadores instalados via Flatpak (flatpak run <app-id> <url>).
+    for app_id in ["org.mozilla.firefox", "com.google.Chrome", "org.chromium.Chromium",
+                   "com.brave.Browser", "com.vivaldi.Vivaldi", "com.microsoft.Edge",
+                   "com.opera.Opera", "org.gnome.Epiphany"] {
+        if run_as_user(&["flatpak", "run", app_id, &url]) {
+            return Ok(());
         }
     }
 
