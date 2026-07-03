@@ -537,8 +537,8 @@ function MemoryPage({ t, tr, snap }) {
         <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 14, padding: 24,
           display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
           <span style={{ color: t.textFaint, fontSize: 13, textAlign: "center" }}>
-            A leitura automática não conseguiu acessar os slots de memória neste sistema.<br />
-            Você pode ler com privilégio de administrador (vai pedir sua senha).
+            {tr("mem_read_fail")}<br />
+            {tr("mem_read_root")}
           </span>
           <button onClick={readWithRoot} disabled={loadingRoot} style={{
             padding: "10px 20px", borderRadius: 10, border: "none", background: ACCENT.blue,
@@ -932,7 +932,7 @@ function FanCurveModal({ t, tr, fan, role, displayName, onClose }) {
         {/* campos editáveis por ponto */}
         <div style={{ marginTop: 16 }}>
           <div style={{ fontSize: 12, color: t.textDim, marginBottom: 10 }}>
-            Pontos de controle — arraste no gráfico ou edite abaixo:
+            {tr("control_points")}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: `repeat(${points.length}, 1fr)`, gap: 8 }}>
             {points.map((p, i) => (
@@ -1004,7 +1004,7 @@ function EnergyPage({ t, tr }) {
         );
       })}
       <div style={{ gridColumn: "1 / -1", color: t.textFaint, fontSize: 12 }}>
-        Aplicar perfil requer root (escrita em /sys). Rode com pkexec/sudo se necessário.
+        {tr("energy_root_note")}
       </div>
     </div>
   );
