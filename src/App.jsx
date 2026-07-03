@@ -302,12 +302,14 @@ function WindowControls({ t }) {
 function MonitorPage({ t, tr, coreHist, gpuMonHist, snap }) {
   if (!snap) return <Loading t={t} />;
 
-  // paleta pra distinguir muitos cores
-  const palette = [
-    "#3b82f6", "#06b6d4", "#22c55e", "#f59e0b", "#a855f7", "#ec4899",
-    "#ef4444", "#14b8a6", "#eab308", "#6366f1", "#f97316", "#84cc16",
-    "#0ea5e9", "#d946ef", "#10b981", "#fb7185",
-  ];
+  // Gera uma cor distinta por core distribuindo o matiz (HSL) uniformemente.
+  // Funciona pra qualquer contagem — 4, 56, 128, 256 threads.
+  const coreColor = (idx, total) => {
+    const hue = Math.round((idx / Math.max(1, total)) * 360);
+    // alterna leveza/saturação pra separar cores vizinhas
+    const light = idx % 2 === 0 ? 60 : 45;
+    return `hsl(${hue}, 70%, ${light}%)`;
+  };
   const W = 900, H = 260, PAD = 30;
   const N = 60; // pontos na janela
 
@@ -380,17 +382,24 @@ function MonitorPage({ t, tr, coreHist, gpuMonHist, snap }) {
         </div>
         <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto" }}>
           {grid()}
-          {/* uma linha fina por core */}
+          {/* uma linha fina por core (cor e espessura adaptam à contagem) */}
           {coreIds.map((id, idx) => (
             <path key={id} d={linePath((frame) => frame.cores.find((c) => c.id === id)?.pct ?? 0)}
-              fill="none" stroke={palette[idx % palette.length]} strokeWidth="1.2" opacity="0.7" />
+              fill="none" stroke={coreColor(idx, coreIds.length)}
+              strokeWidth={coreIds.length > 64 ? 0.8 : 1.2} opacity={coreIds.length > 64 ? 0.55 : 0.7} />
           ))}
           {/* temperatura de package sobreposta (tracejada, grossa) */}
           <path d={tempPath()} fill="none" stroke={ACCENT.orange} strokeWidth="2.5"
             strokeDasharray="6 3" opacity="0.95" />
+          {/* uso médio de toda a CPU — linha grossa azul pra dar o panorama */}
+          <path d={linePath((frame) => {
+            const cs = frame.cores || [];
+            return cs.length ? cs.reduce((a, c) => a + c.pct, 0) / cs.length : 0;
+          })} fill="none" stroke={ACCENT.blue} strokeWidth="2.5" opacity="0.95" />
         </svg>
         <div style={{ display: "flex", gap: 16, marginTop: 8, fontSize: 11, color: t.textFaint }}>
-          <span>▬ {tr("activity")} (%) — {tr("cores")}</span>
+          <span style={{ color: ACCENT.blue }}>▬ {tr("avg_usage")} (%)</span>
+          <span>▬ {tr("cores")} (%)</span>
           <span style={{ color: ACCENT.orange }}>┈ {tr("temperature")} (°C)</span>
         </div>
       </div>
