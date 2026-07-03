@@ -297,81 +297,103 @@ function WindowControls({ t }) {
 }
 
 // ---------- páginas ----------
-// Monitor: gráficos históricos grandes — uso por core (linhas coloridas) +
-// temperatura de package sobreposta, e um card da GPU (uso + temperatura).
+// Monitor: gráficos históricos suaves estilo GNOME — uso por core (linhas finas
+// suaves) + temperatura, e um card da GPU. Suavização por spline; memoizado.
+function smoothPath(points) {
+  // points: [{x, y}] → path com curvas suaves (Catmull-Rom → Bézier cúbica)
+  if (points.length < 2) return "";
+  if (points.length === 2) return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+  let d = `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i === 0 ? 0 : i - 1];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2 < points.length ? i + 2 : i + 1];
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
+
+const MonitorChart = React.memo(function MonitorChart({ t, series, N, maxY = 100 }) {
+  // series: [{ key, color, width, dash, opacity, values:[num] }]
+  const W = 900, H = 260, PAD = 30;
+  const toPoints = (values) => values.map((v, i) => ({
+    x: PAD + (i / (N - 1)) * (W - 2 * PAD),
+    y: H - PAD - (Math.max(0, Math.min(maxY, v)) / maxY) * (H - 2 * PAD),
+  }));
+  const grid = [];
+  for (let p = 0; p <= 100; p += 25) {
+    const y = H - PAD - (p / 100) * (H - 2 * PAD);
+    grid.push(
+      <g key={p}>
+        <line x1={PAD} y1={y} x2={W - PAD} y2={y} stroke={t.stroke} strokeWidth="1" />
+        <text x={PAD - 6} y={y + 3} textAnchor="end" fontSize="9" fill={t.textFaint}>{p}</text>
+      </g>
+    );
+  }
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto" }}>
+      {grid}
+      {series.map((s) => (
+        <path key={s.key} d={smoothPath(toPoints(s.values))} fill="none"
+          stroke={s.color} strokeWidth={s.width} strokeDasharray={s.dash || undefined}
+          strokeLinecap="round" strokeLinejoin="round" opacity={s.opacity ?? 1} />
+      ))}
+    </svg>
+  );
+});
+
 function MonitorPage({ t, tr, coreHist, gpuMonHist, snap }) {
   if (!snap) return <Loading t={t} />;
+  const N = 60;
 
-  // Gera uma cor distinta por core distribuindo o matiz (HSL) uniformemente.
-  // Funciona pra qualquer contagem — 4, 56, 128, 256 threads.
   const coreColor = (idx, total) => {
     const hue = Math.round((idx / Math.max(1, total)) * 360);
-    // alterna leveza/saturação pra separar cores vizinhas
-    const light = idx % 2 === 0 ? 60 : 45;
-    return `hsl(${hue}, 70%, ${light}%)`;
+    return `hsl(${hue}, 65%, ${idx % 2 === 0 ? 58 : 46}%)`;
   };
-  const W = 900, H = 260, PAD = 30;
-  const N = 60; // pontos na janela
 
-  // nº de cores (do último snapshot)
   const lastFrame = coreHist[coreHist.length - 1];
   const coreIds = lastFrame ? lastFrame.cores.map((c) => c.id) : [];
+  const many = coreIds.length > 32;
 
-  // gera path de uma série (0..100) ao longo do histórico
-  const linePath = (getVal) => {
-    if (coreHist.length < 2) return "";
-    return coreHist.map((frame, i) => {
-      const x = PAD + (i / (N - 1)) * (W - 2 * PAD);
-      const v = getVal(frame);
-      const y = H - PAD - (Math.max(0, Math.min(100, v)) / 100) * (H - 2 * PAD);
-      return `${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
-    }).join(" ");
-  };
+  // séries de CPU: uma por core (fina, suave) + média + temperatura
+  const cpuSeries = coreIds.map((id, idx) => ({
+    key: id, color: coreColor(idx, coreIds.length),
+    width: many ? 0.9 : 1.3, opacity: many ? 0.5 : 0.65,
+    values: coreHist.map((f) => f.cores.find((c) => c.id === id)?.pct ?? 0),
+  }));
+  cpuSeries.push({
+    key: "__avg", color: ACCENT.blue, width: 2.4, opacity: 0.95,
+    values: coreHist.map((f) => {
+      const cs = f.cores || [];
+      return cs.length ? cs.reduce((a, c) => a + c.pct, 0) / cs.length : 0;
+    }),
+  });
+  cpuSeries.push({
+    key: "__temp", color: ACCENT.orange, width: 2.4, dash: "6 3", opacity: 0.95,
+    values: coreHist.map((f) => {
+      const ts = f.pkgTemps || [];
+      return ts.length ? ts.reduce((a, b) => a + b, 0) / ts.length : 0;
+    }),
+  });
 
-  // temperatura de package (média dos sockets) sobreposta, 0..100°C
-  const tempPath = () => {
-    if (coreHist.length < 2) return "";
-    return coreHist.map((frame, i) => {
-      const x = PAD + (i / (N - 1)) * (W - 2 * PAD);
-      const temps = frame.pkgTemps || [];
-      const avg = temps.length ? temps.reduce((a, b) => a + b, 0) / temps.length : 0;
-      const y = H - PAD - (Math.max(0, Math.min(100, avg)) / 100) * (H - 2 * PAD);
-      return `${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
-    }).join(" ");
-  };
+  const gpuSeries = [
+    { key: "gpu-usage", color: ACCENT.purple, width: 2.4, values: gpuMonHist.map((f) => f.usage) },
+    { key: "gpu-temp", color: ACCENT.orange, width: 2.4, dash: "6 3", values: gpuMonHist.map((f) => f.temp) },
+  ];
 
-  const gpuPath = (key, max) => {
-    if (gpuMonHist.length < 2) return "";
-    return gpuMonHist.map((f, i) => {
-      const x = PAD + (i / (N - 1)) * (W - 2 * PAD);
-      const y = H - PAD - (Math.max(0, Math.min(max, f[key])) / max) * (H - 2 * PAD);
-      return `${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
-    }).join(" ");
-  };
-
-  const grid = () => {
-    const lines = [];
-    for (let p = 0; p <= 100; p += 25) {
-      const y = H - PAD - (p / 100) * (H - 2 * PAD);
-      lines.push(
-        <g key={p}>
-          <line x1={PAD} y1={y} x2={W - PAD} y2={y} stroke={t.stroke} strokeWidth="1" />
-          <text x={PAD - 6} y={y + 3} textAnchor="end" fontSize="9" fill={t.textFaint}>{p}</text>
-        </g>
-      );
-    }
-    return lines;
-  };
-
-  const lastGpu = gpuMonHist[gpuMonHist.length - 1] || { usage: 0, temp: 0 };
   const avgPkgTemp = (() => {
-    const temps = lastFrame?.pkgTemps || [];
-    return temps.length ? temps.reduce((a, b) => a + b, 0) / temps.length : 0;
+    const ts = lastFrame?.pkgTemps || [];
+    return ts.length ? ts.reduce((a, b) => a + b, 0) / ts.length : 0;
   })();
+  const lastGpu = gpuMonHist[gpuMonHist.length - 1] || { usage: 0, temp: 0 };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      {/* CPU: uso por core + temperatura */}
       <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: 20 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <CardHead t={t} icon={Cpu} accent={ACCENT.blue} title={`CPU · ${coreIds.length} ${tr("threads")}`} />
@@ -380,23 +402,7 @@ function MonitorPage({ t, tr, coreHist, gpuMonHist, snap }) {
             <span style={{ color: t.textDim }}>{tr("temperature")}: <b style={{ color: ACCENT.orange }}>{avgPkgTemp.toFixed(0)}°C</b></span>
           </div>
         </div>
-        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto" }}>
-          {grid()}
-          {/* uma linha fina por core (cor e espessura adaptam à contagem) */}
-          {coreIds.map((id, idx) => (
-            <path key={id} d={linePath((frame) => frame.cores.find((c) => c.id === id)?.pct ?? 0)}
-              fill="none" stroke={coreColor(idx, coreIds.length)}
-              strokeWidth={coreIds.length > 64 ? 0.8 : 1.2} opacity={coreIds.length > 64 ? 0.55 : 0.7} />
-          ))}
-          {/* temperatura de package sobreposta (tracejada, grossa) */}
-          <path d={tempPath()} fill="none" stroke={ACCENT.orange} strokeWidth="2.5"
-            strokeDasharray="6 3" opacity="0.95" />
-          {/* uso médio de toda a CPU — linha grossa azul pra dar o panorama */}
-          <path d={linePath((frame) => {
-            const cs = frame.cores || [];
-            return cs.length ? cs.reduce((a, c) => a + c.pct, 0) / cs.length : 0;
-          })} fill="none" stroke={ACCENT.blue} strokeWidth="2.5" opacity="0.95" />
-        </svg>
+        <MonitorChart t={t} series={cpuSeries} N={N} />
         <div style={{ display: "flex", gap: 16, marginTop: 8, fontSize: 11, color: t.textFaint }}>
           <span style={{ color: ACCENT.blue }}>▬ {tr("avg_usage")} (%)</span>
           <span>▬ {tr("cores")} (%)</span>
@@ -404,7 +410,6 @@ function MonitorPage({ t, tr, coreHist, gpuMonHist, snap }) {
         </div>
       </div>
 
-      {/* GPU: uso + temperatura */}
       <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: 20 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <CardHead t={t} icon={Activity} accent={ACCENT.purple} title={snap.gpus?.[0]?.name || "GPU"} />
@@ -413,11 +418,7 @@ function MonitorPage({ t, tr, coreHist, gpuMonHist, snap }) {
             <span style={{ color: t.textDim }}>{tr("temperature")}: <b style={{ color: ACCENT.orange }}>{lastGpu.temp.toFixed(0)}°C</b></span>
           </div>
         </div>
-        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto" }}>
-          {grid()}
-          <path d={gpuPath("usage", 100)} fill="none" stroke={ACCENT.purple} strokeWidth="2.5" />
-          <path d={gpuPath("temp", 100)} fill="none" stroke={ACCENT.orange} strokeWidth="2.5" strokeDasharray="6 3" />
-        </svg>
+        <MonitorChart t={t} series={gpuSeries} N={N} />
         <div style={{ display: "flex", gap: 16, marginTop: 8, fontSize: 11, color: t.textFaint }}>
           <span style={{ color: ACCENT.purple }}>▬ {tr("avg_usage")} (%)</span>
           <span style={{ color: ACCENT.orange }}>┈ {tr("temperature")} (°C)</span>
@@ -426,6 +427,7 @@ function MonitorPage({ t, tr, coreHist, gpuMonHist, snap }) {
     </div>
   );
 }
+
 
 function Overview({ t, tr, snap, sysInfo, cpuHist, cpuHist2, ramHist, gpuHist }) {
   if (!snap) return <Loading t={t} />;
