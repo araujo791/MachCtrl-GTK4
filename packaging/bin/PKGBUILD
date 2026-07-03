@@ -32,7 +32,8 @@ source=(
 sha256sums=('SKIP')
 
 package() {
-    cd "$srcdir"
+    # O tarball da release extrai numa subpasta machctrl-<ver>-x86_64/
+    cd "$srcdir/machctrl-${pkgver}-x86_64"
 
     # Estrutura esperada dentro do tarball da release:
     #   machctrl            (binário do app)
