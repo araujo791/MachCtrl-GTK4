@@ -661,7 +661,7 @@ function DisksPage({ t, tr, snap }) {
                     <span style={{ fontWeight: 700, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden",
                       textOverflow: "ellipsis" }} title={d.mountpoint}>{d.mountpoint}</span>
                   </div>
-                  <div style={{ color: t.textFaint, fontSize: 11, marginTop: 2 }}>{d.device} · {d.fstype}</div>
+                  <div style={{ color: t.textFaint, fontSize: 11, marginTop: 2 }} title={d.device}>{d.device.split("/").pop()} · {d.fstype}</div>
                 </div>
               </div>
               <div style={{ textAlign: "right", flexShrink: 0 }}>
