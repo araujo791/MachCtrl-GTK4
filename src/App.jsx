@@ -626,6 +626,23 @@ const DISK_TYPES = {
   usb: { label: "USB", color: "#a78bfa", icon: Usb },
 };
 
+// Nome amigável do disco a partir do ponto de montagem:
+// "/" e caminhos curtos ficam como estão; discos montados em
+// /run/media/user/NOME, /media/user/NOME ou /mnt/NOME mostram só o NOME.
+function diskLabel(mountpoint) {
+  if (!mountpoint) return "—";
+  if (mountpoint === "/") return "/";
+  // pontos de montagem de mídia removível → nome do volume (última parte)
+  const mediaRoots = ["/run/media/", "/media/", "/mnt/"];
+  for (const root of mediaRoots) {
+    if (mountpoint.startsWith(root)) {
+      const name = mountpoint.split("/").filter(Boolean).pop();
+      return name || mountpoint;
+    }
+  }
+  return mountpoint;
+}
+
 function DisksPage({ t, tr, snap }) {
   const ioHist = useRef({}); // por device: { read: [], write: [] }
   if (!snap) return <Loading t={t} />;
@@ -659,7 +676,7 @@ function DisksPage({ t, tr, snap }) {
                     <span style={{ fontSize: 9, fontWeight: 800, color: info.color,
                       background: `${info.color}22`, padding: "2px 7px", borderRadius: 5 }}>{info.label}</span>
                     <span style={{ fontWeight: 700, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden",
-                      textOverflow: "ellipsis" }} title={d.mountpoint}>{d.mountpoint}</span>
+                      textOverflow: "ellipsis" }} title={d.mountpoint}>{diskLabel(d.mountpoint)}</span>
                   </div>
                   <div style={{ color: t.textFaint, fontSize: 11, marginTop: 2 }} title={d.device}>{d.device.split("/").pop()} · {d.fstype}</div>
                 </div>
