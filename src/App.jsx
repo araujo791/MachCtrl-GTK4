@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import fanBlade from "./assets/fan-blade.webp";
 import appIcon from "./assets/app-icon.png";
-import { STRINGS, detectLang } from "./i18n";
+import { STRINGS, CLEAN_TASKS, detectLang } from "./i18n";
 import {
   AreaChart, Area, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Cell,
 } from "recharts";
@@ -196,7 +196,7 @@ export default function App() {
             <button onClick={() => setLang((l) => (l === "pt-BR" ? "en" : "pt-BR"))} style={{
               height: 32, padding: "0 10px", borderRadius: 8, border: `1px solid ${t.stroke}`,
               background: t.card, cursor: "pointer", color: t.textDim, fontWeight: 700, fontSize: 12 }}>
-              {lang === "pt-BR" ? "PT" : "EN"}
+              {lang === "pt-BR" ? "BR" : "EN"}
             </button>
             {/* tema */}
             <button onClick={() => setDark((d) => !d)} style={{ width: 32, height: 32, borderRadius: 8,
@@ -216,7 +216,7 @@ export default function App() {
           {active === "disks" && <DisksPage t={t} tr={tr} snap={snap} />}
           {active === "fans" && <FansPage t={t} tr={tr} />}
           {active === "energy" && <EnergyPage t={t} tr={tr} />}
-          {active === "cleaner" && <CleanerPage t={t} tr={tr} />}
+          {active === "cleaner" && <CleanerPage t={t} tr={tr} lang={lang} />}
           {active === "tune" && <Placeholder t={t} title={tr("tune_title")} msg={tr("tune_msg")} />}
           {active === "about" && <AboutPage t={t} tr={tr} sysInfo={sysInfo} />}
         </div>
@@ -1010,7 +1010,22 @@ function EnergyPage({ t, tr }) {
   );
 }
 
-function CleanerPage({ t, tr }) {
+// Traduz o label de uma tarefa de limpeza pelo id (fallback: label do backend).
+function cleanLabel(task, lang) {
+  const t = CLEAN_TASKS[lang]?.[task.id];
+  return t ? t[0] : task.label;
+}
+// Traduz a descrição, preservando parte dinâmica que o backend anexa com " — "
+// (ex: "Esvazia a lixeira — 2.3 MB em uso" → mantém o "— 2.3 MB...").
+function cleanDesc(task, lang) {
+  const t = CLEAN_TASKS[lang]?.[task.id];
+  if (!t) return task.description;
+  const dashIdx = task.description.indexOf(" — ");
+  const dynamic = dashIdx >= 0 ? task.description.slice(dashIdx) : "";
+  return t[1] + dynamic;
+}
+
+function CleanerPage({ t, tr, lang }) {
   const [tasks, setTasks] = useState(null);
   const [results, setResults] = useState({});
   const [running, setRunning] = useState(false);
@@ -1078,11 +1093,11 @@ function CleanerPage({ t, tr }) {
               borderRadius: 14, padding: 16, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontWeight: 700, fontSize: 14 }}>{task.label}</span>
+                  <span style={{ fontWeight: 700, fontSize: 14 }}>{cleanLabel(task, lang)}</span>
                   {task.needs_root && <span style={{ fontSize: 9, fontWeight: 800, color: ACCENT.orange,
                     background: `${ACCENT.orange}22`, padding: "2px 8px", borderRadius: 5 }}>ROOT</span>}
                 </div>
-                <div style={{ color: t.textFaint, fontSize: 12, marginTop: 2 }}>{task.description}</div>
+                <div style={{ color: t.textFaint, fontSize: 12, marginTop: 2 }}>{cleanDesc(task, lang)}</div>
                 {res && <div style={{ color: res.ok ? ACCENT.green : ACCENT.red, fontSize: 12, marginTop: 4 }}>
                   {res.ok ? "✓ " : "✗ "}{res.text}</div>}
               </div>

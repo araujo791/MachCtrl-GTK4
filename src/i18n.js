@@ -199,6 +199,40 @@ export const STRINGS = {
   },
 };
 
+/// Traduções das tarefas de limpeza (o backend manda só o id; o frontend
+/// traduz label + descrição por aqui). Se um id não estiver aqui, o frontend
+/// cai no label/description que veio do backend.
+export const CLEAN_TASKS = {
+  "pt-BR": {
+    "pacman-cache": ["Cache do Pacman", "Remove pacotes antigos (/var/cache/pacman/pkg)"],
+    "pacman-orphans": ["Pacotes Órfãos", "Remove pacotes sem dependentes instalados"],
+    "journal-logs": ["Logs do Journal", "Limpa logs do systemd (mantém últimos 7 dias)"],
+    "temp-files": ["Arquivos Temporários", "Remove arquivos antigos de /tmp e /var/tmp"],
+    "thumb-cache": ["Cache de Miniaturas", "Limpa thumbnails (~/.cache/thumbnails)"],
+    "coredumps": ["Core Dumps", "Remove arquivos de crash do sistema"],
+    "trash": ["Lixeira", "Esvazia a lixeira"],
+    "pip-cache": ["Cache do Pip", "Limpa cache Python (pip)"],
+    "npm-cache": ["Cache do npm", "Limpa cache de pacotes Node.js (~/.npm)"],
+    "yarn-cache": ["Cache do Yarn", "Limpa cache do Yarn (~/.cache/yarn)"],
+    "docker-prune": ["Docker (imagens/containers)", "Remove imagens e containers parados"],
+    "flatpak-unused": ["Flatpak não usados", "Remove runtimes Flatpak desnecessários"],
+  },
+  en: {
+    "pacman-cache": ["Pacman Cache", "Removes old packages (/var/cache/pacman/pkg)"],
+    "pacman-orphans": ["Orphan Packages", "Removes packages with no installed dependents"],
+    "journal-logs": ["Journal Logs", "Cleans systemd logs (keeps last 7 days)"],
+    "temp-files": ["Temporary Files", "Removes old files from /tmp and /var/tmp"],
+    "thumb-cache": ["Thumbnail Cache", "Cleans thumbnails (~/.cache/thumbnails)"],
+    "coredumps": ["Core Dumps", "Removes system crash files"],
+    "trash": ["Trash", "Empties the trash"],
+    "pip-cache": ["Pip Cache", "Cleans Python cache (pip)"],
+    "npm-cache": ["npm Cache", "Cleans Node.js package cache (~/.npm)"],
+    "yarn-cache": ["Yarn Cache", "Cleans Yarn cache (~/.cache/yarn)"],
+    "docker-prune": ["Docker (images/containers)", "Removes stopped images and containers"],
+    "flatpak-unused": ["Unused Flatpak", "Removes unnecessary Flatpak runtimes"],
+  },
+};
+
 /// Detecta o idioma inicial: pt-BR se o sistema for português do Brasil,
 /// senão inglês (fallback pra qualquer outro idioma).
 export function detectLang() {
