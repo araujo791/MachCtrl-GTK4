@@ -524,9 +524,9 @@ function MemoryPage({ t, tr, snap }) {
           </div>
           <div style={{ display: "flex", gap: 36 }}>
             <MemHeadStat t={t} k={tr("total")} v={`${snap.mem_total_gb.toFixed(1)} GB`} />
-            <MemHeadStat t={t} k="Usado" v={`${snap.mem_used_gb.toFixed(1)} GB`} />
+            <MemHeadStat t={t} k={tr("used")} v={`${snap.mem_used_gb.toFixed(1)} GB`} />
             <MemHeadStat t={t} k={tr("free")} v={`${(snap.mem_total_gb - snap.mem_used_gb).toFixed(1)} GB`} />
-            {totalSlots > 0 && <MemHeadStat t={t} k="Slots" v={`${slots.length}/${totalSlots}`} c={ACCENT.blue} />}
+            {totalSlots > 0 && <MemHeadStat t={t} k={tr("slots")} v={`${slots.length}/${totalSlots}`} c={ACCENT.blue} />}
           </div>
         </div>
       </div>
@@ -544,7 +544,7 @@ function MemoryPage({ t, tr, snap }) {
             padding: "10px 20px", borderRadius: 10, border: "none", background: ACCENT.blue,
             color: "#fff", fontWeight: 700, cursor: loadingRoot ? "default" : "pointer",
             opacity: loadingRoot ? 0.6 : 1 }}>
-            {loadingRoot ? "Lendo…" : "Ler slots (requer senha)"}
+            {loadingRoot ? tr("reading") : tr("read_slots")}
           </button>
         </div>
       )}
@@ -558,17 +558,17 @@ function MemoryPage({ t, tr, snap }) {
                 {s.size_gb.toFixed(0)} GB {s.mem_type !== "?" ? s.mem_type : ""}
               </span>
             </div>
-            {s.manufacturer !== "?" && <Row t={t} k="Fabricante" v={s.manufacturer} />}
-            {s.part_number !== "?" && s.part_number !== "" && <Row t={t} k="Modelo" v={s.part_number} />}
-            {s.speed_mhz > 0 && <Row t={t} k="Velocidade" v={`${s.speed_mhz} MT/s`} vc={ACCENT.cyan} />}
-            {s.voltage > 0 && <Row t={t} k="Voltagem" v={`${s.voltage.toFixed(2)} V`} vc={ACCENT.orange} />}
+            {s.manufacturer !== "?" && <Row t={t} k={tr("manufacturer")} v={s.manufacturer} />}
+            {s.part_number !== "?" && s.part_number !== "" && <Row t={t} k={tr("model")} v={s.part_number} />}
+            {s.speed_mhz > 0 && <Row t={t} k={tr("speed")} v={`${s.speed_mhz} MT/s`} vc={ACCENT.cyan} />}
+            {s.voltage > 0 && <Row t={t} k={tr("voltage")} v={`${s.voltage.toFixed(2)} V`} vc={ACCENT.orange} />}
           </div>
         ))}
         {/* Slots vazios */}
         {Array.from({ length: emptySlots }).map((_, i) => (
           <div key={`empty-${i}`} style={{ background: "transparent", border: `1px dashed ${t.stroke}`,
             borderRadius: 14, padding: 16, display: "grid", placeItems: "center", minHeight: 90 }}>
-            <span style={{ color: t.textFaint, fontSize: 13 }}>Slot vazio</span>
+            <span style={{ color: t.textFaint, fontSize: 13 }}>{tr("empty_slot")}</span>
           </div>
         ))}
       </div>
@@ -643,8 +643,8 @@ function DisksPage({ t, tr, snap }) {
 
             {/* I/O: leitura e escrita */}
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <IoRow t={t} icon={ArrowDown} label="Leitura" value={d.read_mbs} color={ACCENT.green} hist={h.read} />
-              <IoRow t={t} icon={ArrowUp} label="Escrita" value={d.write_mbs} color={ACCENT.orange} hist={h.write} />
+              <IoRow t={t} icon={ArrowDown} label={tr("read")} value={d.read_mbs} color={ACCENT.green} hist={h.read} />
+              <IoRow t={t} icon={ArrowUp} label={tr("write")} value={d.write_mbs} color={ACCENT.orange} hist={h.write} />
             </div>
           </div>
         );
@@ -777,7 +777,7 @@ function FansPage({ t, tr }) {
                   </div>
                   <div style={{ color: t.textFaint, fontSize: 11, marginTop: 2 }}>
                     modo: <span style={{ color: mode === "auto" ? ACCENT.green : mode === "max" ? ACCENT.red : ACCENT.blue, fontWeight: 600 }}>
-                      {mode === "auto" ? "Automático" : mode === "max" ? "Máximo" : "Manual"}
+                      {mode === "auto" ? tr("auto") : mode === "max" ? tr("max") : tr("manual")}
                     </span>
                   </div>
                 </div>
@@ -801,8 +801,8 @@ function FansPage({ t, tr }) {
             {f.controllable ? (
               <>
                 <div style={{ display: "flex", gap: 8 }}>
-                  {[["auto", "Automático", ACCENT.green], ["manual", "Manual", ACCENT.blue], ["max", "Máximo", ACCENT.red],
-                    ...(role.name === "GPU" ? [["curve", "Curva", ACCENT.purple]] : [])].map(([m, label, c]) => {
+                  {[["auto", tr("auto"), ACCENT.green], ["manual", tr("manual"), ACCENT.blue], ["max", tr("max"), ACCENT.red],
+                    ...(role.name === "GPU" ? [["curve", tr("curve"), ACCENT.purple]] : [])].map(([m, label, c]) => {
                     const on = mode === m;
                     return (
                       <button key={m} onClick={() => setMode(f, m)} style={{
@@ -841,14 +841,14 @@ function FansPage({ t, tr }) {
         );
       })}
       {curveModal && (
-        <FanCurveModal t={t} fan={curveModal} role={fanRole(curveModal)}
+        <FanCurveModal t={t} tr={tr} fan={curveModal} role={fanRole(curveModal)}
           displayName={displayNames[curveModal.id]} onClose={() => setCurveModal(null)} />
       )}
     </div>
   );
 }
 
-function FanCurveModal({ t, fan, role, displayName, onClose }) {
+function FanCurveModal({ t, tr, fan, role, displayName, onClose }) {
   // Pontos: [temperatura°C, velocidade%]. Editor visual + campos editáveis.
   const [points, setPoints] = useState([
     [30, 30], [50, 40], [65, 60], [75, 80], [85, 100],
@@ -888,7 +888,7 @@ function FanCurveModal({ t, fan, role, displayName, onClose }) {
         {/* header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
           <div>
-            <div style={{ fontSize: 17, fontWeight: 800 }}>Curva de Fan — {displayName || fan.label}</div>
+            <div style={{ fontSize: 17, fontWeight: 800 }}>{tr("fan_curve_of")} — {displayName || fan.label}</div>
             <div style={{ fontSize: 13, color: t.textFaint, marginTop: 4 }}>
               {role.name}: <span style={{ color: ACCENT.orange, fontWeight: 700 }}>{curTemp}°C</span>
               {" → "}Fan: <span style={{ color: ACCENT.blue, fontWeight: 700 }}>{fan.pct}%</span>
@@ -937,12 +937,12 @@ function FanCurveModal({ t, fan, role, displayName, onClose }) {
           <div style={{ display: "grid", gridTemplateColumns: `repeat(${points.length}, 1fr)`, gap: 8 }}>
             {points.map((p, i) => (
               <div key={i} style={{ background: t.panel, borderRadius: 10, padding: 10, textAlign: "center" }}>
-                <div style={{ fontSize: 10, color: t.textFaint, fontWeight: 700, marginBottom: 6 }}>Ponto {i + 1}</div>
-                <div style={{ fontSize: 9, color: t.textFaint }}>Temp °C</div>
+                <div style={{ fontSize: 10, color: t.textFaint, fontWeight: 700, marginBottom: 6 }}>{tr("point")} {i + 1}</div>
+                <div style={{ fontSize: 9, color: t.textFaint }}>{tr("temp")} °C</div>
                 <input type="number" value={p[0]} onChange={(e) => editPoint(i, 0, e.target.value)}
                   style={{ width: "100%", background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 6,
                     color: ACCENT.orange, textAlign: "center", fontWeight: 700, padding: "4px 0", marginBottom: 6 }} />
-                <div style={{ fontSize: 9, color: t.textFaint }}>Fan %</div>
+                <div style={{ fontSize: 9, color: t.textFaint }}>{tr("fan")} %</div>
                 <input type="number" value={p[1]} onChange={(e) => editPoint(i, 1, e.target.value)}
                   style={{ width: "100%", background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 6,
                     color: ACCENT.blue, textAlign: "center", fontWeight: 700, padding: "4px 0" }} />
@@ -953,7 +953,7 @@ function FanCurveModal({ t, fan, role, displayName, onClose }) {
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 20 }}>
           <button onClick={onClose} style={{ padding: "10px 18px", borderRadius: 10, border: `1px solid ${t.stroke}`,
-            background: "transparent", color: t.textDim, fontWeight: 700, cursor: "pointer" }}>Cancelar</button>
+            background: "transparent", color: t.textDim, fontWeight: 700, cursor: "pointer" }}>{tr("cancel")}</button>
           <button onClick={() => {
             const pts = points.map(([temp, pct]) => ({ temp, pct }));
             invoke("set_fan_curve", {
@@ -962,7 +962,7 @@ function FanCurveModal({ t, fan, role, displayName, onClose }) {
             }).catch(() => {});
             onClose();
           }} style={{ padding: "10px 20px", borderRadius: 10, border: "none",
-            background: ACCENT.blue, color: "#fff", fontWeight: 700, cursor: "pointer" }}>Aplicar curva</button>
+            background: ACCENT.blue, color: "#fff", fontWeight: 700, cursor: "pointer" }}>{tr("apply_curve")}</button>
         </div>
       </div>
     </div>
@@ -974,9 +974,9 @@ function EnergyPage({ t, tr }) {
   const load = useCallback(() => { invoke("get_profiles").then(setInfo).catch(() => setInfo(null)); }, []);
   useEffect(() => { load(); }, [load]);
   const DEFS = [
-    { id: "silent", name: "Economia", desc: "Baixo consumo · Silencioso", c: ACCENT.green },
-    { id: "balanced", name: "Equilibrado", desc: "Desempenho adaptativo", c: ACCENT.blue },
-    { id: "performance", name: "Desempenho", desc: "Máximo desempenho · Turbo", c: ACCENT.orange },
+    { id: "silent", name: tr("profile_silent"), desc: tr("profile_silent_desc"), c: ACCENT.green },
+    { id: "balanced", name: tr("profile_balanced"), desc: tr("profile_balanced_desc"), c: ACCENT.blue },
+    { id: "performance", name: tr("profile_performance"), desc: tr("profile_performance_desc"), c: ACCENT.orange },
   ];
   if (!info) return <Loading t={t} />;
   return (
@@ -999,7 +999,7 @@ function EnergyPage({ t, tr }) {
             <button disabled={on} onClick={() => invoke("apply_profile", { name: d.id }).then(load).catch(() => {})}
               style={{ marginTop: 8, width: "100%", padding: "10px 0", borderRadius: 10, border: "none",
                 background: on ? d.c : t.panel, color: on ? "#fff" : t.textDim, fontWeight: 700,
-                cursor: on ? "default" : "pointer" }}>{on ? "Ativo" : "Aplicar"}</button>
+                cursor: on ? "default" : "pointer" }}>{on ? tr("active") : tr("apply")}</button>
           </div>
         );
       })}
@@ -1032,7 +1032,7 @@ function CleanerPage({ t, tr }) {
           ok: r.ok, text: `${r.result}${r.cleaned ? " (" + r.cleaned + ")" : ""}`,
         } }));
       } catch {
-        setResults((prev) => ({ ...prev, [task.id]: { ok: false, text: "Falhou" } }));
+        setResults((prev) => ({ ...prev, [task.id]: { ok: false, text: tr("failed") } }));
       }
     }
     setTotalFreed(total);
@@ -1106,7 +1106,7 @@ function CleanerPage({ t, tr }) {
 
 function AboutPage({ t, tr, sysInfo }) {
   const paypalEmail = "anderson.henrique.araujo@hotmail.com";
-  const paypalUrl = `https://www.paypal.com/donate/?business=${encodeURIComponent(paypalEmail)}&item_name=${encodeURIComponent("Apoie o MachCtrl")}&currency_code=BRL`;
+  const paypalUrl = `https://www.paypal.com/donate/?business=${encodeURIComponent(paypalEmail)}&item_name=${encodeURIComponent(tr("support_project"))}&currency_code=BRL`;
   return (
     <div style={{ display: "grid", placeItems: "center", height: "100%" }}>
       <div style={{ textAlign: "center", maxWidth: 460 }}>
@@ -1124,15 +1124,15 @@ function AboutPage({ t, tr, sysInfo }) {
         {/* Doação */}
         <div style={{ marginTop: 28, padding: 20, background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 16 }}>
           <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
-            {tr("support_project") || "Gostou do MachCtrl?"}
+            {tr("support_project") || tr("support_project")}
           </div>
           <div style={{ fontSize: 12, color: t.textFaint, marginBottom: 14 }}>
-            {tr("support_desc") || "Se este app te ajudou, considere apoiar o desenvolvimento com uma doação."}
+            {tr("support_desc") || tr("support_desc")}
           </div>
           <button onClick={() => invoke("open_url", { url: paypalUrl }).catch(() => {})} style={{
             display: "inline-flex", alignItems: "center", gap: 8, padding: "11px 24px", borderRadius: 10,
             background: "#0070ba", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", border: "none" }}>
-            <Heart size={16} color="#fff" fill="#fff" /> {tr("donate") || "Doar via PayPal"}
+            <Heart size={16} color="#fff" fill="#fff" /> {tr("donate") || tr("donate")}
           </button>
         </div>
 

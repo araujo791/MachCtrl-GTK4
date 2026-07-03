@@ -95,6 +95,7 @@ export const STRINGS = {
     clean_all: "Limpar tudo",
     cleaning: "Limpando…",
     total_freed: "TOTAL LIBERADO",
+    failed: "Falhou",
     // sobre / doação
     support_project: "Gostou do MachCtrl?",
     support_desc: "Se este app te ajudou, considere apoiar o desenvolvimento com uma doação.",
@@ -188,6 +189,7 @@ export const STRINGS = {
     clean_all: "Clean all",
     cleaning: "Cleaning…",
     total_freed: "TOTAL FREED",
+    failed: "Failed",
     support_project: "Enjoying MachCtrl?",
     support_desc: "If this app helped you, consider supporting development with a donation.",
     donate: "Donate via PayPal",
