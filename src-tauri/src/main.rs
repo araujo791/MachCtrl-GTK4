@@ -766,6 +766,16 @@ fn open_url(url: String) -> Result<(), String> {
 
     // 1) Tenta o navegador PADRÃO do usuário (via xdg-settings). Se for um
     // .desktop Flatpak (ex: com.google.Chrome.desktop), roda via flatpak run.
+    // ATENÇÃO: em sistemas com KDE quebrado (falta kreadconfig/qtpaths), o
+    // xdg-settings pode retornar lixo (ex: 'micro.desktop', um editor!). Por
+    // isso só confiamos se o resultado PARECER um navegador.
+    let looks_like_browser = |s: &str| -> bool {
+        let l = s.to_lowercase();
+        ["chrome", "chromium", "firefox", "brave", "vivaldi", "edge", "opera",
+         "epiphany", "browser", "webkit", "falkon", "librewolf", "waterfox"]
+            .iter()
+            .any(|b| l.contains(b))
+    };
     let default_browser = std::process::Command::new("sudo")
         .args(["-u", real_user.as_deref().unwrap_or("root"), "env",
             &format!("XDG_RUNTIME_DIR={runtime_dir}"),
@@ -774,7 +784,7 @@ fn open_url(url: String) -> Result<(), String> {
         .output()
         .ok()
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .filter(|s| !s.is_empty());
+        .filter(|s| !s.is_empty() && looks_like_browser(s));
     if let Some(desktop) = &default_browser {
         // se for Flatpak (.desktop com app-id estilo com.google.Chrome)
         let app_id = desktop.trim_end_matches(".desktop");
@@ -785,12 +795,15 @@ fn open_url(url: String) -> Result<(), String> {
         }
     }
 
-    // 2) Openers genéricos (respeitam o navegador padrão do usuário).
-    for opener in [["gio", "open"], ["xdg-open", ""], ["kde-open", ""], ["kde-open5", ""]] {
-        let mut cmd: Vec<&str> = vec![opener[0]];
-        if !opener[1].is_empty() { cmd.push(opener[1]); }
-        cmd.push(&url);
-        if run_as_user(&cmd) {
+    // 2) Navegadores instalados via Flatpak (flatpak run <app-id> <url>).
+    // Colocado ANTES dos openers genéricos porque no sistema do usuário o
+    // xdg-open/gio estão baguncados (mandam URL pro editor de texto).
+    for app_id in ["com.google.Chrome", "org.mozilla.firefox", "org.chromium.Chromium",
+                   "com.brave.Browser", "com.vivaldi.Vivaldi", "com.microsoft.Edge",
+                   "com.opera.Opera", "org.gnome.Epiphany"] {
+        if flatpak_app_installed(&real_user, &runtime_dir, &dbus, app_id)
+            && run_as_user(&["flatpak", "run", app_id, &url])
+        {
             return Ok(());
         }
     }
@@ -803,16 +816,34 @@ fn open_url(url: String) -> Result<(), String> {
         }
     }
 
-    // 4) Navegadores instalados via Flatpak (flatpak run <app-id> <url>).
-    for app_id in ["com.google.Chrome", "org.mozilla.firefox", "org.chromium.Chromium",
-                   "com.brave.Browser", "com.vivaldi.Vivaldi", "com.microsoft.Edge",
-                   "com.opera.Opera", "org.gnome.Epiphany"] {
-        if run_as_user(&["flatpak", "run", app_id, &url]) {
+    // 4) Por último, openers genéricos (podem estar quebrados, mas tentamos).
+    for opener in [["gio", "open"], ["xdg-open", ""], ["kde-open", ""], ["kde-open5", ""]] {
+        let mut cmd: Vec<&str> = vec![opener[0]];
+        if !opener[1].is_empty() { cmd.push(opener[1]); }
+        cmd.push(&url);
+        if run_as_user(&cmd) {
             return Ok(());
         }
     }
 
     Err("não foi possível abrir o navegador".to_string())
+}
+
+/// Verifica se um app Flatpak está instalado (pra não tentar rodar um que não existe).
+fn flatpak_app_installed(
+    real_user: &Option<String>,
+    runtime_dir: &str,
+    dbus: &str,
+    app_id: &str,
+) -> bool {
+    std::process::Command::new("sudo")
+        .args(["-u", real_user.as_deref().unwrap_or("root"), "env",
+            &format!("XDG_RUNTIME_DIR={runtime_dir}"),
+            &format!("DBUS_SESSION_BUS_ADDRESS={dbus}"),
+            "flatpak", "info", app_id])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 /// Verifica se o serviço machctrld está ativo (pra o app não brigar pelo PWM).
