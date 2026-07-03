@@ -13,11 +13,6 @@ use fancontrol::{CurvePoint, FanControl, FanMode, SharedFanController};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tauri::{
-    menu::{Menu, MenuItem},
-    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
-};
 
 // ---------------------------------------------------------------------------
 // Estado compartilhado: guarda leituras anteriores pra calcular deltas
@@ -902,12 +897,6 @@ fn save_ui_prefs(prefs: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Esconde a janela na bandeja (chamado pelo botão "minimizar pro tray").
-#[tauri::command]
-fn hide_to_tray(window: tauri::Window) {
-    let _ = window.hide();
-}
-
 fn main() {
     // Carrega as configs salvas (curvas/modos definidos anteriormente).
     let fan_ctrl: SharedFanController = Arc::new(Mutex::new(fancontrol::load_config()));
@@ -922,64 +911,6 @@ fn main() {
     tauri::Builder::default()
         .manage(SharedState::default())
         .manage(fan_ctrl)
-        .setup(|app| {
-            // Menu do tray: Abrir / Sair
-            let open_item = MenuItem::with_id(app, "open", "Abrir MachCtrl", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "Sair", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open_item, &quit_item])?;
-
-            let icon = match app.default_window_icon() {
-                Some(i) => i.clone(),
-                None => {
-                    eprintln!("machctrl: AVISO — sem ícone padrão pro tray");
-                    return Ok(());
-                }
-            };
-
-            // Ícone na bandeja do sistema.
-            let tray_result = TrayIconBuilder::with_id("main-tray")
-                .icon(icon)
-                .tooltip("MachCtrl")
-                .menu(&menu)
-                .show_menu_on_left_click(false)
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "open" => {
-                        if let Some(win) = app.get_webview_window("main") {
-                            let _ = win.show();
-                            let _ = win.unminimize();
-                            let _ = win.set_focus();
-                        }
-                    }
-                    "quit" => {
-                        app.exit(0);
-                    }
-                    _ => {}
-                })
-                .on_tray_icon_event(|tray, event| {
-                    // clique esquerdo no ícone → mostra/foca a janela
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = event
-                    {
-                        let app = tray.app_handle();
-                        if let Some(win) = app.get_webview_window("main") {
-                            let _ = win.show();
-                            let _ = win.unminimize();
-                            let _ = win.set_focus();
-                        }
-                    }
-                })
-                .build(app);
-
-            match tray_result {
-                Ok(_) => eprintln!("machctrl: tray criado com sucesso"),
-                Err(e) => eprintln!("machctrl: ERRO ao criar tray: {e}"),
-            }
-
-            Ok(())
-        })
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
             get_system_info,
@@ -997,7 +928,6 @@ fn main() {
             open_url,
             load_ui_prefs,
             save_ui_prefs,
-            hide_to_tray,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar o MachCtrl");

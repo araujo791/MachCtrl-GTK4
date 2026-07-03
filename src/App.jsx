@@ -10,7 +10,7 @@ import {
 import {
   LayoutDashboard, Cpu, MemoryStick, HardDrive, Fan, Zap,
   Trash2, Gauge, Info, Sun, Moon, Activity, Usb, Database,
-  ArrowDown, ArrowUp, Minus, Square, X, Heart, ChevronDown,
+  ArrowDown, ArrowUp, Minus, Square, X, Heart,
 } from "lucide-react";
 
 // ---------- temas ----------
@@ -241,7 +241,6 @@ function WindowControls({ t }) {
   );
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 2, marginLeft: 4 }}>
-      {btn(() => invoke("hide_to_tray").catch(() => {}), <ChevronDown size={16} />, null, "Minimizar para a bandeja")}
       {btn(() => win.minimize(), <Minus size={15} />)}
       {btn(() => win.toggleMaximize(), <Square size={12} />)}
       {btn(() => win.close(), <X size={16} />, "#ef4444")}
