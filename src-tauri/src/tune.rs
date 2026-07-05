@@ -112,16 +112,45 @@ pub fn get_service(name: &str) -> ServiceState {
 // Aplicação (requer root — o app roda elevado)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Persistência: além de aplicar em runtime, grava a config permanente pra
+// sobreviver ao reboot (sysctl.d, udev, tmpfiles).
+// ---------------------------------------------------------------------------
+
+const SYSCTL_FILE: &str = "/etc/sysctl.d/99-machctrl.conf";
+const UDEV_FILE: &str = "/etc/udev/rules.d/60-machctrl-ioscheduler.rules";
+const THP_TMPFILES: &str = "/etc/tmpfiles.d/machctrl-thp.conf";
+
+/// Lê/atualiza uma chave no arquivo sysctl do MachCtrl (formato "chave = valor").
+fn persist_sysctl(key: &str, value: &str) -> Result<(), String> {
+    let mut lines: Vec<String> = fs::read_to_string(SYSCTL_FILE)
+        .unwrap_or_default()
+        .lines()
+        .filter(|l| {
+            let l = l.trim();
+            // remove a linha existente dessa mesma chave e comentários vazios
+            !l.starts_with(key) && !l.is_empty()
+        })
+        .map(|l| l.to_string())
+        .collect();
+    lines.insert(0, "# Gerado pelo MachCtrl — ajustes persistentes".to_string());
+    lines.push(format!("{key} = {value}"));
+    fs::write(SYSCTL_FILE, lines.join("\n") + "\n")
+        .map_err(|e| format!("erro ao persistir sysctl: {e}"))
+}
+
 pub fn set_swappiness(value: i32) -> Result<(), String> {
     let v = value.clamp(0, 200);
     fs::write("/proc/sys/vm/swappiness", v.to_string())
-        .map_err(|e| format!("erro ao aplicar swappiness: {e}"))
+        .map_err(|e| format!("erro ao aplicar swappiness: {e}"))?;
+    persist_sysctl("vm.swappiness", &v.to_string())
 }
 
 pub fn set_cache_pressure(value: i32) -> Result<(), String> {
     let v = value.clamp(0, 1000);
     fs::write("/proc/sys/vm/vfs_cache_pressure", v.to_string())
-        .map_err(|e| format!("erro ao aplicar cache_pressure: {e}"))
+        .map_err(|e| format!("erro ao aplicar cache_pressure: {e}"))?;
+    persist_sysctl("vm.vfs_cache_pressure", &v.to_string())
 }
 
 pub fn set_thp(mode: &str) -> Result<(), String> {
@@ -129,16 +158,38 @@ pub fn set_thp(mode: &str) -> Result<(), String> {
         return Err("modo THP inválido".into());
     }
     fs::write("/sys/kernel/mm/transparent_hugepage/enabled", mode)
-        .map_err(|e| format!("erro ao aplicar THP: {e}"))
+        .map_err(|e| format!("erro ao aplicar THP: {e}"))?;
+    // Persiste via tmpfiles.d (escreve no sysfs em todo boot).
+    let content = format!(
+        "# Gerado pelo MachCtrl\nw! /sys/kernel/mm/transparent_hugepage/enabled - - - - {mode}\n"
+    );
+    fs::write(THP_TMPFILES, content).map_err(|e| format!("erro ao persistir THP: {e}"))
 }
 
 pub fn set_io_scheduler(device: &str, scheduler: &str) -> Result<(), String> {
-    // sanitiza o nome do device (evita path traversal)
     if device.contains('/') || device.contains("..") {
         return Err("device inválido".into());
     }
     let path = format!("/sys/block/{device}/queue/scheduler");
-    fs::write(&path, scheduler).map_err(|e| format!("erro ao aplicar scheduler: {e}"))
+    fs::write(&path, scheduler).map_err(|e| format!("erro ao aplicar scheduler: {e}"))?;
+
+    // Persiste via regra udev por device. Reescreve o arquivo inteiro mantendo
+    // as regras dos outros devices e atualizando/inserindo a deste.
+    let existing = fs::read_to_string(UDEV_FILE).unwrap_or_default();
+    let mut lines: Vec<String> = existing
+        .lines()
+        .filter(|l| {
+            let l = l.trim();
+            !l.is_empty() && !l.starts_with('#') && !l.contains(&format!("KERNEL==\"{device}\""))
+        })
+        .map(|l| l.to_string())
+        .collect();
+    lines.insert(0, "# Gerado pelo MachCtrl — I/O schedulers persistentes".to_string());
+    lines.push(format!(
+        "ACTION==\"add|change\", KERNEL==\"{device}\", ATTR{{queue/scheduler}}=\"{scheduler}\""
+    ));
+    fs::write(UDEV_FILE, lines.join("\n") + "\n")
+        .map_err(|e| format!("erro ao persistir udev: {e}"))
 }
 
 /// Liga/desliga (active) e habilita/desabilita (boot) um serviço.
