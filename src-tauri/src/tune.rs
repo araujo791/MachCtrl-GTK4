@@ -38,9 +38,37 @@ pub struct DiskScheduler {
     pub device: String,
     pub current: String,
     pub available: Vec<String>,
+    pub disk_type: String,
 }
 
-/// Lê o I/O scheduler de cada disco (sd*, nvme*).
+/// Detecta se um disco é removível/externo (USB, etc.) pra ignorá-lo.
+/// Lê /sys/block/<dev>/removable e o barramento em /sys/block/<dev>/.../subsystem.
+fn is_internal_disk(name: &str) -> bool {
+    // removable == "1" → cartão/pendrive
+    if let Some(rem) = read_trim(&format!("/sys/block/{name}/removable")) {
+        if rem == "1" {
+            return false;
+        }
+    }
+    // resolve o link do device pra ver se está atrás de USB
+    let dev_link = format!("/sys/block/{name}");
+    if let Ok(target) = fs::read_link(&dev_link) {
+        let path = target.to_string_lossy().to_lowercase();
+        if path.contains("usb") {
+            return false;
+        }
+    }
+    // também checa o caminho real completo
+    if let Ok(real) = fs::canonicalize(&dev_link) {
+        let p = real.to_string_lossy().to_lowercase();
+        if p.contains("/usb") {
+            return false;
+        }
+    }
+    true
+}
+
+/// Lê o I/O scheduler de cada disco INTERNO (sd*, nvme*; ignora USB/removível).
 pub fn get_io_schedulers() -> Vec<DiskScheduler> {
     let mut out = Vec::new();
     if let Ok(entries) = fs::read_dir("/sys/block") {
@@ -48,12 +76,12 @@ pub fn get_io_schedulers() -> Vec<DiskScheduler> {
             .filter_map(|e| e.ok())
             .map(|e| e.file_name().to_string_lossy().to_string())
             .filter(|n| n.starts_with("sd") || n.starts_with("nvme"))
+            .filter(|n| is_internal_disk(n))
             .collect();
         names.sort();
         for name in names {
             let path = format!("/sys/block/{name}/queue/scheduler");
             if let Some(raw) = read_trim(&path) {
-                // "none [mq-deadline] kyber bfq" → current=mq-deadline, available=todos
                 let available: Vec<String> = raw
                     .split_whitespace()
                     .map(|w| w.trim_matches(|c| c == '[' || c == ']').to_string())
@@ -63,11 +91,24 @@ pub fn get_io_schedulers() -> Vec<DiskScheduler> {
                     .find(|w| w.starts_with('['))
                     .map(|w| w.trim_matches(|c| c == '[' || c == ']').to_string())
                     .unwrap_or_default();
-                out.push(DiskScheduler { device: name, current, available });
+                // tipo do disco (nvme, ssd, hdd) pra sugerir o scheduler ideal
+                let disk_type = detect_disk_type(&name);
+                out.push(DiskScheduler { device: name, current, available, disk_type });
             }
         }
     }
     out
+}
+
+/// Detecta o tipo do disco: nvme, ssd (rotational=0) ou hdd (rotational=1).
+fn detect_disk_type(name: &str) -> String {
+    if name.starts_with("nvme") {
+        return "nvme".into();
+    }
+    match read_trim(&format!("/sys/block/{name}/queue/rotational")).as_deref() {
+        Some("0") => "ssd".into(),
+        _ => "hdd".into(),
+    }
 }
 
 /// Verifica se um comando existe no PATH.
@@ -106,6 +147,48 @@ pub fn get_service(name: &str) -> ServiceState {
     let exists = enabled_str != "not-found" && !enabled_str.is_empty();
     let enabled = enabled_str == "enabled" || enabled_str == "enabled-runtime";
     ServiceState { name: name.to_string(), active, enabled, exists }
+}
+
+// --- Rede: TCP congestion control (BBR e afins) ---
+
+#[derive(serde::Serialize)]
+pub struct NetworkState {
+    pub current_cc: Option<String>,
+    pub available_cc: Vec<String>,
+    pub bbr_available: bool,
+}
+
+/// Lê o congestion control atual e os disponíveis.
+pub fn get_network_state() -> NetworkState {
+    let current = read_trim("/proc/sys/net/ipv4/tcp_congestion_control");
+    let available: Vec<String> = read_trim("/proc/sys/net/ipv4/tcp_available_congestion_control")
+        .map(|s| s.split_whitespace().map(|w| w.to_string()).collect())
+        .unwrap_or_default();
+    // BBR pode não estar carregado mas ser carregável via modprobe
+    let bbr_available = available.iter().any(|c| c == "bbr")
+        || std::path::Path::new("/lib/modules").exists();
+    NetworkState { current_cc: current, available_cc: available, bbr_available }
+}
+
+/// Aplica o congestion control e persiste. Se for bbr e não estiver disponível,
+/// tenta carregar o módulo primeiro.
+pub fn set_congestion_control(algo: &str) -> Result<(), String> {
+    // sanitiza (só letras/números)
+    if !algo.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Err("algoritmo inválido".into());
+    }
+    // tenta carregar o módulo se for bbr
+    if algo == "bbr" {
+        let _ = Command::new("modprobe").arg("tcp_bbr").status();
+    }
+    fs::write("/proc/sys/net/ipv4/tcp_congestion_control", algo)
+        .map_err(|e| format!("erro ao aplicar congestion control: {e}"))?;
+    // persiste no sysctl + garante o módulo no boot
+    persist_sysctl("net.ipv4.tcp_congestion_control", algo)?;
+    if algo == "bbr" {
+        let _ = fs::write("/etc/modules-load.d/machctrl-bbr.conf", "tcp_bbr\n");
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

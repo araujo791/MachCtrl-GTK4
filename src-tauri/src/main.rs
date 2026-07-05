@@ -909,6 +909,7 @@ struct TuneState {
     thp: Option<String>,
     io_schedulers: Vec<tune::DiskScheduler>,
     services: Vec<tune::ServiceState>,
+    network: tune::NetworkState,
     has_cpupower: bool,
     has_ananicy: bool,
     has_zram: bool,
@@ -930,10 +931,16 @@ fn get_tune_state() -> TuneState {
         thp: tune::get_thp(),
         io_schedulers: tune::get_io_schedulers(),
         services,
+        network: tune::get_network_state(),
         has_cpupower: tune::command_exists("cpupower"),
         has_ananicy: tune::command_exists("ananicy-cpp"),
         has_zram: tune::command_exists("zramctl"),
     }
+}
+
+#[tauri::command]
+fn set_congestion_control(algo: String) -> Result<(), String> {
+    tune::set_congestion_control(&algo)
 }
 
 #[tauri::command]
@@ -998,6 +1005,7 @@ fn main() {
             set_thp,
             set_io_scheduler,
             set_service,
+            set_congestion_control,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar o MachCtrl");

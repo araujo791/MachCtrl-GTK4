@@ -282,8 +282,27 @@ function WindowControls({ t }) {
 }
 
 // ---------- páginas ----------
-// Ajuste: controles de sistema detectados automaticamente. Cada seção só
-// aparece se o sistema suportar. Aplicação imediata (sem reboot).
+// Ajuste: controles de sistema detectados automaticamente, em grid. Cada seção
+// só aparece se o sistema suportar. Aplicação imediata + persistente no reboot.
+// Recarrega ao montar (detecta discos novos conectados).
+function InfoTip({ t, text }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span style={{ position: "relative", display: "inline-flex", marginLeft: 6 }}
+      onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
+      <span style={{ width: 15, height: 15, borderRadius: 8, border: `1px solid ${t.textFaint}`,
+        color: t.textFaint, fontSize: 10, fontWeight: 800, display: "grid", placeItems: "center",
+        cursor: "help", flexShrink: 0 }}>?</span>
+      {show && (
+        <span style={{ position: "absolute", bottom: "130%", left: "50%", transform: "translateX(-50%)",
+          width: 240, background: t.bg, border: `1px solid ${t.stroke}`, borderRadius: 8, padding: "8px 10px",
+          fontSize: 11, color: t.textDim, lineHeight: 1.4, zIndex: 100, boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+          fontWeight: 400, textAlign: "left" }}>{text}</span>
+      )}
+    </span>
+  );
+}
+
 function TunePage({ t, tr }) {
   const [state, setState] = useState(null);
   const [busy, setBusy] = useState(null);
@@ -303,20 +322,20 @@ function TunePage({ t, tr }) {
     setBusy(null);
   };
 
-  const Section = ({ title, desc, children }) => (
+  const Section = ({ title, children }) => (
     <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 16, padding: 20 }}>
-      <div style={{ fontWeight: 800, fontSize: 15, marginBottom: desc ? 2 : 14 }}>{title}</div>
-      {desc && <div style={{ color: t.textFaint, fontSize: 12, marginBottom: 16 }}>{desc}</div>}
+      <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6, textTransform: "uppercase",
+        letterSpacing: 0.3, color: t.textDim }}>{title}</div>
       {children}
     </div>
   );
 
-  const Row = ({ label, hint, children }) => (
+  const Row = ({ label, tip, children }) => (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
-      gap: 16, padding: "10px 0", borderTop: `1px solid ${t.stroke}` }}>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600 }}>{label}</div>
-        {hint && <div style={{ color: t.textFaint, fontSize: 11, marginTop: 1 }}>{hint}</div>}
+      gap: 12, padding: "12px 0", borderTop: `1px solid ${t.stroke}` }}>
+      <div style={{ display: "flex", alignItems: "center", minWidth: 0 }}>
+        <span style={{ fontSize: 13, fontWeight: 600 }}>{label}</span>
+        {tip && <InfoTip t={t} text={tip} />}
       </div>
       <div style={{ flexShrink: 0 }}>{children}</div>
     </div>
@@ -343,6 +362,14 @@ function TunePage({ t, tr }) {
     </div>
   );
 
+  const Dropdown = ({ options, value, onSelect }) => (
+    <select value={value} onChange={(e) => onSelect(e.target.value)}
+      style={{ background: t.panel, color: t.text, border: `1px solid ${t.stroke}`,
+        borderRadius: 8, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}>
+      {options.map((s) => <option key={s} value={s}>{s}</option>)}
+    </select>
+  );
+
   const Slider = ({ value, min, max, onCommit }) => {
     const [v, setV] = useState(value);
     useEffect(() => { setV(value); }, [value]);
@@ -351,53 +378,69 @@ function TunePage({ t, tr }) {
         <input type="range" min={min} max={max} value={v}
           onChange={(e) => setV(Number(e.target.value))}
           onMouseUp={(e) => onCommit(Number(e.target.value))}
-          style={{ width: 140, accentColor: ACCENT.purple }} />
-        <span style={{ fontSize: 13, fontWeight: 800, color: ACCENT.purple, width: 32, textAlign: "right" }}>{v}</span>
+          style={{ width: 130, accentColor: ACCENT.purple }} />
+        <span style={{ fontSize: 13, fontWeight: 800, color: ACCENT.purple, width: 30, textAlign: "right" }}>{v}</span>
       </div>
     );
   };
 
+  const diskTypeBadge = (type) => {
+    const map = { nvme: ["NVMe", ACCENT.blue], ssd: ["SSD", ACCENT.cyan], hdd: ["HDD", ACCENT.orange] };
+    const [label, color] = map[type] || ["disco", t.textDim];
+    return <span style={{ fontSize: 9, fontWeight: 800, color, background: `${color}22`,
+      padding: "2px 6px", borderRadius: 4, marginLeft: 6 }}>{label}</span>;
+  };
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 720 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+      gap: 16, alignItems: "start" }}>
       {/* Memória */}
       {(state.swappiness != null || state.cache_pressure != null) && (
         <Section title={tr("tune_memory")}>
           {state.swappiness != null && (
-            <Row label={tr("tune_swappiness")} hint={tr("tune_swappiness_hint")}>
+            <Row label={tr("tune_swappiness")} tip={tr("tune_swappiness_hint")}>
               <Slider value={state.swappiness} min={0} max={100}
                 onCommit={(val) => apply("set_swappiness", { value: val }, "swap")} />
             </Row>
           )}
           {state.cache_pressure != null && (
-            <Row label={tr("tune_cache")} hint={tr("tune_cache_hint")}>
+            <Row label={tr("tune_cache")} tip={tr("tune_cache_hint")}>
               <Slider value={state.cache_pressure} min={0} max={200}
                 onCommit={(val) => apply("set_cache_pressure", { value: val }, "cache")} />
+            </Row>
+          )}
+          {state.thp != null && (
+            <Row label="Huge Pages" tip={tr("tune_thp_hint")}>
+              <Pill options={["always", "madvise", "never"]} value={state.thp}
+                onSelect={(mode) => apply("set_thp", { mode }, "thp")} />
             </Row>
           )}
         </Section>
       )}
 
-      {/* THP */}
-      {state.thp != null && (
-        <Section title={tr("tune_thp")} desc={tr("tune_thp_hint")}>
-          <Row label="Transparent Huge Pages">
-            <Pill options={["always", "madvise", "never"]} value={state.thp}
-              onSelect={(mode) => apply("set_thp", { mode }, "thp")} />
+      {/* Rede */}
+      {state.network && state.network.current_cc && (
+        <Section title={tr("tune_network")}>
+          <Row label={tr("tune_congestion")} tip={tr("tune_congestion_hint")}>
+            <Dropdown
+              options={Array.from(new Set([...(state.network.available_cc || []),
+                ...(state.network.bbr_available ? ["bbr"] : [])]))}
+              value={state.network.current_cc}
+              onSelect={(algo) => apply("set_congestion_control", { algo }, "cc")} />
           </Row>
         </Section>
       )}
 
-      {/* I/O scheduler por disco */}
+      {/* I/O scheduler por disco interno */}
       {state.io_schedulers.length > 0 && (
-        <Section title={tr("tune_io")} desc={tr("tune_io_hint")}>
+        <Section title={tr("tune_io")}>
+          <div style={{ fontSize: 11, color: t.textFaint, marginBottom: 4, marginTop: -2 }}>
+            {tr("tune_io_hint")}
+          </div>
           {state.io_schedulers.map((d) => (
-            <Row key={d.device} label={d.device}>
-              <select value={d.current}
-                onChange={(e) => apply("set_io_scheduler", { device: d.device, scheduler: e.target.value }, "io")}
-                style={{ background: t.panel, color: t.text, border: `1px solid ${t.stroke}`,
-                  borderRadius: 8, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}>
-                {d.available.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
+            <Row key={d.device} label={<>{d.device}{diskTypeBadge(d.disk_type)}</>}>
+              <Dropdown options={d.available} value={d.current}
+                onSelect={(s) => apply("set_io_scheduler", { device: d.device, scheduler: s }, "io")} />
             </Row>
           ))}
         </Section>
@@ -405,10 +448,12 @@ function TunePage({ t, tr }) {
 
       {/* Serviços */}
       {state.services.length > 0 && (
-        <Section title={tr("tune_services")} desc={tr("tune_services_hint")}>
+        <Section title={tr("tune_services")}>
+          <div style={{ fontSize: 11, color: t.textFaint, marginBottom: 4, marginTop: -2 }}>
+            {tr("tune_services_hint")}
+          </div>
           {state.services.map((s) => (
-            <Row key={s.name} label={s.name}
-              hint={s.active ? tr("tune_active") : tr("tune_inactive")}>
+            <Row key={s.name} label={s.name} tip={SERVICE_TIPS[s.name]}>
               <Toggle on={s.active} disabled={busy === "svc"}
                 onClick={() => apply("set_service", { name: s.name, enable: !s.active }, "svc")} />
             </Row>
@@ -418,6 +463,16 @@ function TunePage({ t, tr }) {
     </div>
   );
 }
+
+// Dicas curtas por serviço.
+const SERVICE_TIPS = {
+  "ananicy-cpp": "Ajusta a prioridade dos programas automaticamente pra deixar o sistema mais fluido.",
+  "irqbalance": "Distribui as interrupções de hardware entre os núcleos da CPU.",
+  "bluetooth": "Serviço de Bluetooth. Desligue se não usa, pra economizar recursos.",
+  "cups": "Serviço de impressão. Desligue se não tem impressora.",
+  "fstrim.timer": "Faz a limpeza (TRIM) dos SSDs periodicamente, mantendo a velocidade.",
+  "tlp": "Gerenciador de energia (mais foco em notebooks).",
+};
 
 function Overview({ t, tr, snap, sysInfo, cpuHist, cpuHist2, ramHist, gpuHist }) {
   if (!snap) return <Loading t={t} />;

@@ -122,6 +122,9 @@ export const STRINGS = {
     tune_services_hint: "Liga/desliga serviços do sistema (aplica agora e no boot).",
     tune_active: "Ativo",
     tune_inactive: "Inativo",
+    tune_network: "Rede",
+    tune_congestion: "Controle de congestionamento TCP",
+    tune_congestion_hint: "Algoritmo que decide a velocidade de envio na rede. 'bbr' (do Google) costuma dar mais velocidade e estabilidade, especialmente em conexões com perda ou alta latência.",
     // sobre
     about_subtitle: "Monitor e Otimizador de Hardware para Linux",
   },
@@ -233,6 +236,9 @@ export const STRINGS = {
     tune_services_hint: "Enable/disable system services (applies now and at boot).",
     tune_active: "Active",
     tune_inactive: "Inactive",
+    tune_network: "Network",
+    tune_congestion: "TCP congestion control",
+    tune_congestion_hint: "Algorithm that decides network send rate. 'bbr' (by Google) usually gives more speed and stability, especially on lossy or high-latency links.",
     about_subtitle: "Hardware Monitor and Optimizer for Linux",
   },
 };
