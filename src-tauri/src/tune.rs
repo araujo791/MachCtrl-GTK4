@@ -1,0 +1,159 @@
+// Ajustes de sistema (tela Ajuste). Cada leitura/escrita é feita direto em
+// sysfs/proc ou via systemctl. Tudo detectável: o frontend só mostra o que o
+// sistema realmente suporta.
+
+use std::fs;
+use std::process::Command;
+
+// ---------------------------------------------------------------------------
+// Leitura de valores atuais
+// ---------------------------------------------------------------------------
+
+fn read_trim(path: &str) -> Option<String> {
+    fs::read_to_string(path).ok().map(|s| s.trim().to_string())
+}
+
+/// Lê o swappiness atual (/proc/sys/vm/swappiness).
+pub fn get_swappiness() -> Option<i32> {
+    read_trim("/proc/sys/vm/swappiness").and_then(|s| s.parse().ok())
+}
+
+/// Lê o vfs_cache_pressure atual.
+pub fn get_cache_pressure() -> Option<i32> {
+    read_trim("/proc/sys/vm/vfs_cache_pressure").and_then(|s| s.parse().ok())
+}
+
+/// Lê o modo de THP: retorna a opção entre colchetes ([always], madvise, never).
+pub fn get_thp() -> Option<String> {
+    let raw = read_trim("/sys/kernel/mm/transparent_hugepage/enabled")?;
+    // formato: "always [madvise] never" — extrai o que está entre colchetes
+    raw.split_whitespace()
+        .find(|w| w.starts_with('[') && w.ends_with(']'))
+        .map(|w| w.trim_matches(|c| c == '[' || c == ']').to_string())
+        .or(Some(raw))
+}
+
+#[derive(serde::Serialize)]
+pub struct DiskScheduler {
+    pub device: String,
+    pub current: String,
+    pub available: Vec<String>,
+}
+
+/// Lê o I/O scheduler de cada disco (sd*, nvme*).
+pub fn get_io_schedulers() -> Vec<DiskScheduler> {
+    let mut out = Vec::new();
+    if let Ok(entries) = fs::read_dir("/sys/block") {
+        let mut names: Vec<String> = entries
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n.starts_with("sd") || n.starts_with("nvme"))
+            .collect();
+        names.sort();
+        for name in names {
+            let path = format!("/sys/block/{name}/queue/scheduler");
+            if let Some(raw) = read_trim(&path) {
+                // "none [mq-deadline] kyber bfq" → current=mq-deadline, available=todos
+                let available: Vec<String> = raw
+                    .split_whitespace()
+                    .map(|w| w.trim_matches(|c| c == '[' || c == ']').to_string())
+                    .collect();
+                let current = raw
+                    .split_whitespace()
+                    .find(|w| w.starts_with('['))
+                    .map(|w| w.trim_matches(|c| c == '[' || c == ']').to_string())
+                    .unwrap_or_default();
+                out.push(DiskScheduler { device: name, current, available });
+            }
+        }
+    }
+    out
+}
+
+/// Verifica se um comando existe no PATH.
+pub fn command_exists(cmd: &str) -> bool {
+    Command::new("sh")
+        .args(["-c", &format!("command -v {cmd}")])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+#[derive(serde::Serialize)]
+pub struct ServiceState {
+    pub name: String,
+    pub active: bool,
+    pub enabled: bool,
+    pub exists: bool,
+}
+
+/// Estado de um serviço systemd (active/enabled/existe).
+pub fn get_service(name: &str) -> ServiceState {
+    let active = Command::new("systemctl")
+        .args(["is-active", "--quiet", name])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    let enabled_out = Command::new("systemctl")
+        .args(["is-enabled", name])
+        .output()
+        .ok();
+    let enabled_str = enabled_out
+        .as_ref()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+    // "not-found" significa que a unit não existe
+    let exists = enabled_str != "not-found" && !enabled_str.is_empty();
+    let enabled = enabled_str == "enabled" || enabled_str == "enabled-runtime";
+    ServiceState { name: name.to_string(), active, enabled, exists }
+}
+
+// ---------------------------------------------------------------------------
+// Aplicação (requer root — o app roda elevado)
+// ---------------------------------------------------------------------------
+
+pub fn set_swappiness(value: i32) -> Result<(), String> {
+    let v = value.clamp(0, 200);
+    fs::write("/proc/sys/vm/swappiness", v.to_string())
+        .map_err(|e| format!("erro ao aplicar swappiness: {e}"))
+}
+
+pub fn set_cache_pressure(value: i32) -> Result<(), String> {
+    let v = value.clamp(0, 1000);
+    fs::write("/proc/sys/vm/vfs_cache_pressure", v.to_string())
+        .map_err(|e| format!("erro ao aplicar cache_pressure: {e}"))
+}
+
+pub fn set_thp(mode: &str) -> Result<(), String> {
+    if !["always", "madvise", "never"].contains(&mode) {
+        return Err("modo THP inválido".into());
+    }
+    fs::write("/sys/kernel/mm/transparent_hugepage/enabled", mode)
+        .map_err(|e| format!("erro ao aplicar THP: {e}"))
+}
+
+pub fn set_io_scheduler(device: &str, scheduler: &str) -> Result<(), String> {
+    // sanitiza o nome do device (evita path traversal)
+    if device.contains('/') || device.contains("..") {
+        return Err("device inválido".into());
+    }
+    let path = format!("/sys/block/{device}/queue/scheduler");
+    fs::write(&path, scheduler).map_err(|e| format!("erro ao aplicar scheduler: {e}"))
+}
+
+/// Liga/desliga (active) e habilita/desabilita (boot) um serviço.
+pub fn set_service(name: &str, enable: bool) -> Result<(), String> {
+    let (action_now, action_boot) = if enable {
+        ("start", "enable")
+    } else {
+        ("stop", "disable")
+    };
+    // habilita/desabilita no boot
+    let _ = Command::new("systemctl").args([action_boot, name]).status();
+    // liga/desliga agora
+    Command::new("systemctl")
+        .args([action_now, name])
+        .status()
+        .map_err(|e| format!("erro ao {action_now} {name}: {e}"))?;
+    Ok(())
+}

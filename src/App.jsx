@@ -37,7 +37,7 @@ const NAV = [
   { id: "fans", key: "nav_fans", icon: Fan, accent: ACCENT.cyan },
   { id: "energy", key: "nav_energy", icon: Zap, accent: ACCENT.orange },
   { id: "cleaner", key: "nav_cleaner", icon: Trash2, accent: ACCENT.red },
-  // { id: "tune", key: "nav_tune", icon: Gauge, accent: ACCENT.purple }, // oculto até finalizarmos o Ajuste
+  { id: "tune", key: "nav_tune", icon: Gauge, accent: ACCENT.purple },
   { id: "about", key: "nav_about", icon: Info, accent: ACCENT.textDim },
 ];
 
@@ -251,7 +251,7 @@ export default function App() {
           {active === "fans" && <FansPage t={t} tr={tr} />}
           {active === "energy" && <EnergyPage t={t} tr={tr} />}
           {active === "cleaner" && <CleanerPage t={t} tr={tr} lang={lang} />}
-          {active === "tune" && <Placeholder t={t} title={tr("tune_title")} msg={tr("tune_msg")} />}
+          {active === "tune" && <TunePage t={t} tr={tr} />}
           {active === "about" && <AboutPage t={t} tr={tr} sysInfo={sysInfo} />}
         </div>
       </div>
@@ -282,6 +282,143 @@ function WindowControls({ t }) {
 }
 
 // ---------- páginas ----------
+// Ajuste: controles de sistema detectados automaticamente. Cada seção só
+// aparece se o sistema suportar. Aplicação imediata (sem reboot).
+function TunePage({ t, tr }) {
+  const [state, setState] = useState(null);
+  const [busy, setBusy] = useState(null);
+
+  const reload = useCallback(() => {
+    invoke("get_tune_state").then(setState).catch(() => setState(null));
+  }, []);
+  useEffect(() => { reload(); }, [reload]);
+
+  if (state === null) return <Loading t={t} />;
+
+  const apply = async (cmd, args, key) => {
+    setBusy(key);
+    try { await invoke(cmd, args); } catch { /* ignora */ }
+    await new Promise((r) => setTimeout(r, 150));
+    reload();
+    setBusy(null);
+  };
+
+  const Section = ({ title, desc, children }) => (
+    <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 16, padding: 20 }}>
+      <div style={{ fontWeight: 800, fontSize: 15, marginBottom: desc ? 2 : 14 }}>{title}</div>
+      {desc && <div style={{ color: t.textFaint, fontSize: 12, marginBottom: 16 }}>{desc}</div>}
+      {children}
+    </div>
+  );
+
+  const Row = ({ label, hint, children }) => (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+      gap: 16, padding: "10px 0", borderTop: `1px solid ${t.stroke}` }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>{label}</div>
+        {hint && <div style={{ color: t.textFaint, fontSize: 11, marginTop: 1 }}>{hint}</div>}
+      </div>
+      <div style={{ flexShrink: 0 }}>{children}</div>
+    </div>
+  );
+
+  const Toggle = ({ on, onClick, disabled }) => (
+    <button onClick={onClick} disabled={disabled} style={{
+      width: 44, height: 24, borderRadius: 12, border: "none", cursor: disabled ? "default" : "pointer",
+      background: on ? ACCENT.green : t.stroke, position: "relative", transition: "background 0.2s" }}>
+      <div style={{ width: 18, height: 18, borderRadius: 9, background: "#fff", position: "absolute",
+        top: 3, left: on ? 23 : 3, transition: "left 0.2s" }} />
+    </button>
+  );
+
+  const Pill = ({ options, value, onSelect }) => (
+    <div style={{ display: "flex", gap: 4, background: t.panel, padding: 3, borderRadius: 9 }}>
+      {options.map((o) => (
+        <button key={o} onClick={() => onSelect(o)} style={{
+          padding: "5px 12px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 700,
+          background: value === o ? ACCENT.purple : "transparent", color: value === o ? "#fff" : t.textDim }}>
+          {o}
+        </button>
+      ))}
+    </div>
+  );
+
+  const Slider = ({ value, min, max, onCommit }) => {
+    const [v, setV] = useState(value);
+    useEffect(() => { setV(value); }, [value]);
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <input type="range" min={min} max={max} value={v}
+          onChange={(e) => setV(Number(e.target.value))}
+          onMouseUp={(e) => onCommit(Number(e.target.value))}
+          style={{ width: 140, accentColor: ACCENT.purple }} />
+        <span style={{ fontSize: 13, fontWeight: 800, color: ACCENT.purple, width: 32, textAlign: "right" }}>{v}</span>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 720 }}>
+      {/* Memória */}
+      {(state.swappiness != null || state.cache_pressure != null) && (
+        <Section title={tr("tune_memory")}>
+          {state.swappiness != null && (
+            <Row label={tr("tune_swappiness")} hint={tr("tune_swappiness_hint")}>
+              <Slider value={state.swappiness} min={0} max={100}
+                onCommit={(val) => apply("set_swappiness", { value: val }, "swap")} />
+            </Row>
+          )}
+          {state.cache_pressure != null && (
+            <Row label={tr("tune_cache")} hint={tr("tune_cache_hint")}>
+              <Slider value={state.cache_pressure} min={0} max={200}
+                onCommit={(val) => apply("set_cache_pressure", { value: val }, "cache")} />
+            </Row>
+          )}
+        </Section>
+      )}
+
+      {/* THP */}
+      {state.thp != null && (
+        <Section title={tr("tune_thp")} desc={tr("tune_thp_hint")}>
+          <Row label="Transparent Huge Pages">
+            <Pill options={["always", "madvise", "never"]} value={state.thp}
+              onSelect={(mode) => apply("set_thp", { mode }, "thp")} />
+          </Row>
+        </Section>
+      )}
+
+      {/* I/O scheduler por disco */}
+      {state.io_schedulers.length > 0 && (
+        <Section title={tr("tune_io")} desc={tr("tune_io_hint")}>
+          {state.io_schedulers.map((d) => (
+            <Row key={d.device} label={d.device}>
+              <select value={d.current}
+                onChange={(e) => apply("set_io_scheduler", { device: d.device, scheduler: e.target.value }, "io")}
+                style={{ background: t.panel, color: t.text, border: `1px solid ${t.stroke}`,
+                  borderRadius: 8, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}>
+                {d.available.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </Row>
+          ))}
+        </Section>
+      )}
+
+      {/* Serviços */}
+      {state.services.length > 0 && (
+        <Section title={tr("tune_services")} desc={tr("tune_services_hint")}>
+          {state.services.map((s) => (
+            <Row key={s.name} label={s.name}
+              hint={s.active ? tr("tune_active") : tr("tune_inactive")}>
+              <Toggle on={s.active} disabled={busy === "svc"}
+                onClick={() => apply("set_service", { name: s.name, enable: !s.active }, "svc")} />
+            </Row>
+          ))}
+        </Section>
+      )}
+    </div>
+  );
+}
+
 function Overview({ t, tr, snap, sysInfo, cpuHist, cpuHist2, ramHist, gpuHist }) {
   if (!snap) return <Loading t={t} />;
   const gpu = snap.gpus[0];

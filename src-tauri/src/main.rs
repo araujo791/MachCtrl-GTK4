@@ -8,6 +8,7 @@ mod hwmon;
 mod memory;
 mod procstat;
 mod profiles;
+mod tune;
 
 use fancontrol::{CurvePoint, FanControl, FanMode, SharedFanController};
 use serde::{Deserialize, Serialize};
@@ -897,6 +898,69 @@ fn save_ui_prefs(prefs: String) -> Result<(), String> {
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Ajustes de sistema (tela Ajuste)
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct TuneState {
+    swappiness: Option<i32>,
+    cache_pressure: Option<i32>,
+    thp: Option<String>,
+    io_schedulers: Vec<tune::DiskScheduler>,
+    services: Vec<tune::ServiceState>,
+    has_cpupower: bool,
+    has_ananicy: bool,
+    has_zram: bool,
+}
+
+#[tauri::command]
+fn get_tune_state() -> TuneState {
+    // serviços de interesse — só os que existirem aparecem no frontend
+    let service_names = ["ananicy-cpp", "irqbalance", "bluetooth", "cups", "tlp", "fstrim.timer"];
+    let services: Vec<tune::ServiceState> = service_names
+        .iter()
+        .map(|s| tune::get_service(s))
+        .filter(|s| s.exists)
+        .collect();
+
+    TuneState {
+        swappiness: tune::get_swappiness(),
+        cache_pressure: tune::get_cache_pressure(),
+        thp: tune::get_thp(),
+        io_schedulers: tune::get_io_schedulers(),
+        services,
+        has_cpupower: tune::command_exists("cpupower"),
+        has_ananicy: tune::command_exists("ananicy-cpp"),
+        has_zram: tune::command_exists("zramctl"),
+    }
+}
+
+#[tauri::command]
+fn set_swappiness(value: i32) -> Result<(), String> {
+    tune::set_swappiness(value)
+}
+
+#[tauri::command]
+fn set_cache_pressure(value: i32) -> Result<(), String> {
+    tune::set_cache_pressure(value)
+}
+
+#[tauri::command]
+fn set_thp(mode: String) -> Result<(), String> {
+    tune::set_thp(&mode)
+}
+
+#[tauri::command]
+fn set_io_scheduler(device: String, scheduler: String) -> Result<(), String> {
+    tune::set_io_scheduler(&device, &scheduler)
+}
+
+#[tauri::command]
+fn set_service(name: String, enable: bool) -> Result<(), String> {
+    tune::set_service(&name, enable)
+}
+
 fn main() {
     // Carrega as configs salvas (curvas/modos definidos anteriormente).
     let fan_ctrl: SharedFanController = Arc::new(Mutex::new(fancontrol::load_config()));
@@ -928,6 +992,12 @@ fn main() {
             open_url,
             load_ui_prefs,
             save_ui_prefs,
+            get_tune_state,
+            set_swappiness,
+            set_cache_pressure,
+            set_thp,
+            set_io_scheduler,
+            set_service,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar o MachCtrl");
