@@ -288,20 +288,20 @@ function WindowControls({ t }) {
 function InfoTip({ t, text }) {
   const [show, setShow] = useState(false);
   return (
-    <span style={{ position: "relative", display: "inline-flex", marginLeft: 6 }}
-      onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
+    <span
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+      style={{ position: "relative", display: "inline-flex", marginLeft: 6, verticalAlign: "middle" }}>
       <span style={{ width: 15, height: 15, borderRadius: 8, border: `1px solid ${t.textFaint}`,
         color: t.textFaint, fontSize: 10, fontWeight: 800, display: "grid", placeItems: "center",
-        cursor: "help", flexShrink: 0 }}>?</span>
+        cursor: "help", flexShrink: 0, userSelect: "none" }}>?</span>
       {show && (
-        <span style={{ position: "absolute", bottom: "calc(100% + 8px)", left: "50%",
-          transform: "translateX(-50%)", width: 240, background: t.bg, border: `1px solid ${t.stroke}`,
-          borderRadius: 8, padding: "8px 10px", fontSize: 11, color: t.textDim, lineHeight: 1.4,
-          zIndex: 100, boxShadow: "0 8px 24px rgba(0,0,0,0.35)", fontWeight: 400, textAlign: "left",
-          pointerEvents: "none" }}>
+        <span style={{ position: "absolute", bottom: "calc(100% + 10px)", right: -8,
+          width: 230, background: t.bg, border: `1px solid ${t.stroke}`, borderRadius: 8,
+          padding: "9px 11px", fontSize: 11, color: t.textDim, lineHeight: 1.45, zIndex: 500,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.35)", fontWeight: 400, textAlign: "left",
+          pointerEvents: "none", whiteSpace: "normal" }}>
           {text}
-          {/* ponte invisível: preenche o gap entre o (?) e o tooltip pra o hover não piscar */}
-          <span style={{ position: "absolute", top: "100%", left: 0, right: 0, height: 8 }} />
         </span>
       )}
     </span>
@@ -328,7 +328,9 @@ function TunePage({ t, tr }) {
   };
 
   const Section = ({ title, children }) => (
-    <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 16, padding: 20 }}>
+    <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 16, padding: 20,
+      breakInside: "avoid", marginBottom: 16, display: "inline-block", width: "100%",
+      boxSizing: "border-box" }}>
       <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6, textTransform: "uppercase",
         letterSpacing: 0.3, color: t.textDim }}>{title}</div>
       {children}
@@ -400,8 +402,7 @@ function TunePage({ t, tr }) {
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-      gap: 16, alignItems: "start" }}>
+    <div style={{ columnWidth: 300, columnGap: 16, paddingBottom: 8 }}>
       {/* Memória */}
       {(state.swappiness != null || state.cache_pressure != null) && (
         <Section title={tr("tune_memory")}>
