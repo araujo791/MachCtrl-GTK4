@@ -445,16 +445,6 @@ function TunePage({ t, tr }) {
             )}
           </Section>
         )}
-
-        {/* Sistema */}
-        {state.nmi_watchdog != null && (
-          <Section title={tr("tune_system")}>
-            <Row label={tr("tune_nmi")} tip={tr("tune_nmi_hint")}>
-              <Toggle on={state.nmi_watchdog} disabled={busy === "nmi"}
-                onClick={() => apply("set_nmi_watchdog", { on: !state.nmi_watchdog }, "nmi")} />
-            </Row>
-          </Section>
-        )}
       </div>
 
       {/* Coluna 2: Serviços (médio) */}

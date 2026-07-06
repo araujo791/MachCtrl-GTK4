@@ -28,11 +28,6 @@ pub fn get_dirty_bg_ratio() -> Option<i32> {
     read_trim("/proc/sys/vm/dirty_background_ratio").and_then(|s| s.parse().ok())
 }
 
-/// Lê o estado do NMI watchdog (0 = desligado, 1 = ligado).
-pub fn get_nmi_watchdog() -> Option<bool> {
-    read_trim("/proc/sys/kernel/nmi_watchdog").map(|s| s == "1")
-}
-
 /// Lê o vfs_cache_pressure atual.
 pub fn get_cache_pressure() -> Option<i32> {
     read_trim("/proc/sys/vm/vfs_cache_pressure").and_then(|s| s.parse().ok())
@@ -263,15 +258,6 @@ pub fn set_dirty_bg_ratio(value: i32) -> Result<(), String> {
     fs::write("/proc/sys/vm/dirty_background_ratio", v.to_string())
         .map_err(|e| format!("erro ao aplicar dirty_background_ratio: {e}"))?;
     persist_sysctl("vm.dirty_background_ratio", &v.to_string())
-}
-
-pub fn set_nmi_watchdog(on: bool) -> Result<(), String> {
-    let v = if on { "1" } else { "0" };
-    fs::write("/proc/sys/kernel/nmi_watchdog", v)
-        .map_err(|e| format!("erro ao aplicar nmi_watchdog: {e}"))?;
-    // persistência é best-effort: se falhar, o runtime já foi aplicado
-    let _ = persist_sysctl("kernel.nmi_watchdog", v);
-    Ok(())
 }
 
 pub fn set_thp(mode: &str) -> Result<(), String> {

@@ -908,7 +908,6 @@ struct TuneState {
     cache_pressure: Option<i32>,
     dirty_ratio: Option<i32>,
     dirty_bg_ratio: Option<i32>,
-    nmi_watchdog: Option<bool>,
     thp: Option<String>,
     io_schedulers: Vec<tune::DiskScheduler>,
     services: Vec<tune::ServiceState>,
@@ -933,7 +932,6 @@ fn get_tune_state() -> TuneState {
         cache_pressure: tune::get_cache_pressure(),
         dirty_ratio: tune::get_dirty_ratio(),
         dirty_bg_ratio: tune::get_dirty_bg_ratio(),
-        nmi_watchdog: tune::get_nmi_watchdog(),
         thp: tune::get_thp(),
         io_schedulers: tune::get_io_schedulers(),
         services,
@@ -957,11 +955,6 @@ fn set_dirty_ratio(value: i32) -> Result<(), String> {
 #[tauri::command]
 fn set_dirty_bg_ratio(value: i32) -> Result<(), String> {
     tune::set_dirty_bg_ratio(value)
-}
-
-#[tauri::command]
-fn set_nmi_watchdog(on: bool) -> Result<(), String> {
-    tune::set_nmi_watchdog(on)
 }
 
 #[tauri::command]
@@ -1029,7 +1022,6 @@ fn main() {
             set_congestion_control,
             set_dirty_ratio,
             set_dirty_bg_ratio,
-            set_nmi_watchdog,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar o MachCtrl");

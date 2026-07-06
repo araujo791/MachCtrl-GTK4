@@ -130,9 +130,6 @@ export const STRINGS = {
     tune_dirty_bg_hint: "% da RAM com dados pendentes que dispara a gravação em segundo plano. Menor = grava mais cedo e suave.",
     tune_dirty: "Limite de gravação",
     tune_dirty_hint: "% da RAM com dados pendentes que força a gravação imediata. Valores altos podem causar travadinhas ao gravar muito.",
-    tune_system: "Sistema",
-    tune_nmi: "NMI watchdog",
-    tune_nmi_hint: "Monitor de travamentos do kernel. Desligar economiza um pouco de energia e reduz interrupções (seguro em desktop).",
     // sobre
     about_subtitle: "Monitor e Otimizador de Hardware para Linux",
   },
@@ -252,9 +249,6 @@ export const STRINGS = {
     tune_dirty_bg_hint: "% of RAM with pending data that triggers background writeback. Lower = writes earlier and smoother.",
     tune_dirty: "Writeback limit",
     tune_dirty_hint: "% of RAM with pending data that forces immediate writeback. High values may cause stutters on heavy writes.",
-    tune_system: "System",
-    tune_nmi: "NMI watchdog",
-    tune_nmi_hint: "Kernel lockup monitor. Turning it off saves a bit of power and reduces interrupts (safe on desktop).",
     about_subtitle: "Hardware Monitor and Optimizer for Linux",
   },
 };
