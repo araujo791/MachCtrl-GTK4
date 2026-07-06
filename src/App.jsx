@@ -294,10 +294,15 @@ function InfoTip({ t, text }) {
         color: t.textFaint, fontSize: 10, fontWeight: 800, display: "grid", placeItems: "center",
         cursor: "help", flexShrink: 0 }}>?</span>
       {show && (
-        <span style={{ position: "absolute", bottom: "130%", left: "50%", transform: "translateX(-50%)",
-          width: 240, background: t.bg, border: `1px solid ${t.stroke}`, borderRadius: 8, padding: "8px 10px",
-          fontSize: 11, color: t.textDim, lineHeight: 1.4, zIndex: 100, boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
-          fontWeight: 400, textAlign: "left" }}>{text}</span>
+        <span style={{ position: "absolute", bottom: "calc(100% + 8px)", left: "50%",
+          transform: "translateX(-50%)", width: 240, background: t.bg, border: `1px solid ${t.stroke}`,
+          borderRadius: 8, padding: "8px 10px", fontSize: 11, color: t.textDim, lineHeight: 1.4,
+          zIndex: 100, boxShadow: "0 8px 24px rgba(0,0,0,0.35)", fontWeight: 400, textAlign: "left",
+          pointerEvents: "none" }}>
+          {text}
+          {/* ponte invisível: preenche o gap entre o (?) e o tooltip pra o hover não piscar */}
+          <span style={{ position: "absolute", top: "100%", left: 0, right: 0, height: 8 }} />
+        </span>
       )}
     </span>
   );
@@ -395,7 +400,7 @@ function TunePage({ t, tr }) {
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
       gap: 16, alignItems: "start" }}>
       {/* Memória */}
       {(state.swappiness != null || state.cache_pressure != null) && (
