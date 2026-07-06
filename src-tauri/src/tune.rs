@@ -269,7 +269,9 @@ pub fn set_nmi_watchdog(on: bool) -> Result<(), String> {
     let v = if on { "1" } else { "0" };
     fs::write("/proc/sys/kernel/nmi_watchdog", v)
         .map_err(|e| format!("erro ao aplicar nmi_watchdog: {e}"))?;
-    persist_sysctl("kernel.nmi_watchdog", v)
+    // persistência é best-effort: se falhar, o runtime já foi aplicado
+    let _ = persist_sysctl("kernel.nmi_watchdog", v);
+    Ok(())
 }
 
 pub fn set_thp(mode: &str) -> Result<(), String> {
