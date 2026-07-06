@@ -72,8 +72,8 @@ button {
    O balão só aparece no hover do wrapper e nunca intercepta o mouse. */
 .mc-tip-bubble {
   position: absolute;
-  bottom: calc(100% + 10px);
-  right: -8px;
+  bottom: calc(100% + 14px);
+  right: -6px;
   width: 230px;
   padding: 9px 11px;
   border-radius: 8px;
@@ -83,12 +83,9 @@ button {
   text-align: left;
   white-space: normal;
   z-index: 500;
-  opacity: 0;
-  visibility: hidden;
+  display: none;
   pointer-events: none;
-  transition: opacity 0.12s ease;
 }
 .mc-tip:hover .mc-tip-bubble {
-  opacity: 1;
-  visibility: visible;
+  display: block;
 }

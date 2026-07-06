@@ -287,8 +287,8 @@ function WindowControls({ t }) {
 // Recarrega ao montar (detecta discos novos conectados).
 function InfoTip({ t, text }) {
   return (
-    <span className="mc-tip" style={{ position: "relative", display: "inline-flex", marginLeft: 6,
-      verticalAlign: "middle" }}>
+    <span className="mc-tip" title={text} style={{ position: "relative", display: "inline-flex",
+      marginLeft: 6, verticalAlign: "middle" }}>
       <span style={{ width: 15, height: 15, borderRadius: 8, border: `1px solid ${t.textFaint}`,
         color: t.textFaint, fontSize: 10, fontWeight: 800, display: "grid", placeItems: "center",
         cursor: "help", flexShrink: 0, userSelect: "none" }}>?</span>
@@ -319,7 +319,6 @@ function TunePage({ t, tr }) {
 
   const Section = ({ title, children }) => (
     <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 16, padding: 20,
-      breakInside: "avoid", marginBottom: 16, display: "inline-block", width: "100%",
       boxSizing: "border-box" }}>
       <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6, textTransform: "uppercase",
         letterSpacing: 0.3, color: t.textDim }}>{title}</div>
@@ -392,7 +391,8 @@ function TunePage({ t, tr }) {
   };
 
   return (
-    <div style={{ columnWidth: 300, columnGap: 16, paddingBottom: 8 }}>
+    <div style={{ display: "grid", gap: 16, alignItems: "start",
+      gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))" }}>
       {/* Memória */}
       {(state.swappiness != null || state.cache_pressure != null) && (
         <Section title={tr("tune_memory")}>
