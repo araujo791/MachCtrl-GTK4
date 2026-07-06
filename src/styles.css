@@ -68,24 +68,3 @@ button {
   to { transform: rotate(360deg); }
 }
 
-/* Tooltip do InfoTip (?) — CSS puro, sem estado React, sem flicker.
-   O balão só aparece no hover do wrapper e nunca intercepta o mouse. */
-.mc-tip-bubble {
-  position: absolute;
-  bottom: calc(100% + 14px);
-  right: -6px;
-  width: 230px;
-  padding: 9px 11px;
-  border-radius: 8px;
-  font-size: 11px;
-  line-height: 1.45;
-  font-weight: 400;
-  text-align: left;
-  white-space: normal;
-  z-index: 500;
-  display: none;
-  pointer-events: none;
-}
-.mc-tip:hover .mc-tip-bubble {
-  display: block;
-}

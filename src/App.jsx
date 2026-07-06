@@ -287,13 +287,10 @@ function WindowControls({ t }) {
 // Recarrega ao montar (detecta discos novos conectados).
 function InfoTip({ t, text }) {
   return (
-    <span className="mc-tip" title={text} style={{ position: "relative", display: "inline-flex",
-      marginLeft: 6, verticalAlign: "middle" }}>
+    <span title={text} style={{ display: "inline-flex", marginLeft: 6, verticalAlign: "middle" }}>
       <span style={{ width: 15, height: 15, borderRadius: 8, border: `1px solid ${t.textFaint}`,
         color: t.textFaint, fontSize: 10, fontWeight: 800, display: "grid", placeItems: "center",
         cursor: "help", flexShrink: 0, userSelect: "none" }}>?</span>
-      <span className="mc-tip-bubble" style={{ background: t.bg, border: `1px solid ${t.stroke}`,
-        color: t.textDim, boxShadow: "0 8px 24px rgba(0,0,0,0.35)" }}>{text}</span>
     </span>
   );
 }
@@ -391,101 +388,107 @@ function TunePage({ t, tr }) {
   };
 
   return (
-    <div style={{ display: "grid", gap: 16, alignItems: "start",
-      gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))" }}>
-      {/* Memória */}
-      {(state.swappiness != null || state.cache_pressure != null) && (
-        <Section title={tr("tune_memory")}>
-          {state.swappiness != null && (
-            <Row label={tr("tune_swappiness")} tip={tr("tune_swappiness_hint")}>
-              <Slider value={state.swappiness} min={0} max={100}
-                onCommit={(val) => apply("set_swappiness", { value: val }, "swap")} />
-            </Row>
-          )}
-          {state.cache_pressure != null && (
-            <Row label={tr("tune_cache")} tip={tr("tune_cache_hint")}>
-              <Slider value={state.cache_pressure} min={0} max={200}
-                onCommit={(val) => apply("set_cache_pressure", { value: val }, "cache")} />
-            </Row>
-          )}
-          {state.thp != null && (
-            <Row label="Huge Pages" tip={tr("tune_thp_hint")}>
-              <Pill options={["always", "madvise", "never"]} value={state.thp}
-                onSelect={(mode) => apply("set_thp", { mode }, "thp")} />
-            </Row>
-          )}
-        </Section>
-      )}
+    <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+      {/* Coluna 1: ajustes curtos empilhados */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 16, flex: "1 1 300px", minWidth: 280 }}>
+        {/* Memória */}
+        {(state.swappiness != null || state.cache_pressure != null) && (
+          <Section title={tr("tune_memory")}>
+            {state.swappiness != null && (
+              <Row label={tr("tune_swappiness")} tip={tr("tune_swappiness_hint")}>
+                <Slider value={state.swappiness} min={0} max={100}
+                  onCommit={(val) => apply("set_swappiness", { value: val }, "swap")} />
+              </Row>
+            )}
+            {state.cache_pressure != null && (
+              <Row label={tr("tune_cache")} tip={tr("tune_cache_hint")}>
+                <Slider value={state.cache_pressure} min={0} max={200}
+                  onCommit={(val) => apply("set_cache_pressure", { value: val }, "cache")} />
+              </Row>
+            )}
+            {state.thp != null && (
+              <Row label="Huge Pages" tip={tr("tune_thp_hint")}>
+                <Pill options={["always", "madvise", "never"]} value={state.thp}
+                  onSelect={(mode) => apply("set_thp", { mode }, "thp")} />
+              </Row>
+            )}
+          </Section>
+        )}
 
-      {/* Rede */}
-      {state.network && state.network.current_cc && (
-        <Section title={tr("tune_network")}>
-          <Row label={tr("tune_congestion")} tip={tr("tune_congestion_hint")}>
-            <Dropdown
-              options={Array.from(new Set([...(state.network.available_cc || []),
-                ...(state.network.bbr_available ? ["bbr"] : [])]))}
-              value={state.network.current_cc}
-              onSelect={(algo) => apply("set_congestion_control", { algo }, "cc")} />
-          </Row>
-        </Section>
-      )}
-
-      {/* Escrita em disco (dirty ratios) */}
-      {(state.dirty_ratio != null || state.dirty_bg_ratio != null) && (
-        <Section title={tr("tune_writeback")}>
-          {state.dirty_bg_ratio != null && (
-            <Row label={tr("tune_dirty_bg")} tip={tr("tune_dirty_bg_hint")}>
-              <Slider value={state.dirty_bg_ratio} min={1} max={50}
-                onCommit={(val) => apply("set_dirty_bg_ratio", { value: val }, "dbg")} />
+        {/* Rede */}
+        {state.network && state.network.current_cc && (
+          <Section title={tr("tune_network")}>
+            <Row label={tr("tune_congestion")} tip={tr("tune_congestion_hint")}>
+              <Dropdown
+                options={Array.from(new Set([...(state.network.available_cc || []),
+                  ...(state.network.bbr_available ? ["bbr"] : [])]))}
+                value={state.network.current_cc}
+                onSelect={(algo) => apply("set_congestion_control", { algo }, "cc")} />
             </Row>
-          )}
-          {state.dirty_ratio != null && (
-            <Row label={tr("tune_dirty")} tip={tr("tune_dirty_hint")}>
-              <Slider value={state.dirty_ratio} min={1} max={80}
-                onCommit={(val) => apply("set_dirty_ratio", { value: val }, "dr")} />
+          </Section>
+        )}
+
+        {/* Escrita em disco (dirty ratios) */}
+        {(state.dirty_ratio != null || state.dirty_bg_ratio != null) && (
+          <Section title={tr("tune_writeback")}>
+            {state.dirty_bg_ratio != null && (
+              <Row label={tr("tune_dirty_bg")} tip={tr("tune_dirty_bg_hint")}>
+                <Slider value={state.dirty_bg_ratio} min={1} max={50}
+                  onCommit={(val) => apply("set_dirty_bg_ratio", { value: val }, "dbg")} />
+              </Row>
+            )}
+            {state.dirty_ratio != null && (
+              <Row label={tr("tune_dirty")} tip={tr("tune_dirty_hint")}>
+                <Slider value={state.dirty_ratio} min={1} max={80}
+                  onCommit={(val) => apply("set_dirty_ratio", { value: val }, "dr")} />
+              </Row>
+            )}
+          </Section>
+        )}
+
+        {/* Sistema */}
+        {state.nmi_watchdog != null && (
+          <Section title={tr("tune_system")}>
+            <Row label={tr("tune_nmi")} tip={tr("tune_nmi_hint")}>
+              <Toggle on={state.nmi_watchdog} disabled={busy === "nmi"}
+                onClick={() => apply("set_nmi_watchdog", { on: !state.nmi_watchdog }, "nmi")} />
             </Row>
-          )}
-        </Section>
-      )}
+          </Section>
+        )}
+      </div>
 
-      {/* Sistema */}
-      {state.nmi_watchdog != null && (
-        <Section title={tr("tune_system")}>
-          <Row label={tr("tune_nmi")} tip={tr("tune_nmi_hint")}>
-            <Toggle on={state.nmi_watchdog} disabled={busy === "nmi"}
-              onClick={() => apply("set_nmi_watchdog", { on: !state.nmi_watchdog }, "nmi")} />
-          </Row>
-        </Section>
-      )}
-
-      {/* I/O scheduler por disco interno */}
-      {state.io_schedulers.length > 0 && (
-        <Section title={tr("tune_io")}>
-          <div style={{ fontSize: 11, color: t.textFaint, marginBottom: 4, marginTop: -2 }}>
-            {tr("tune_io_hint")}
-          </div>
-          {state.io_schedulers.map((d) => (
-            <Row key={d.device} label={<>{d.device}{diskTypeBadge(d.disk_type)}</>}>
-              <Dropdown options={d.available} value={d.current}
-                onSelect={(s) => apply("set_io_scheduler", { device: d.device, scheduler: s }, "io")} />
-            </Row>
-          ))}
-        </Section>
-      )}
-
-      {/* Serviços */}
+      {/* Coluna 2: Serviços (médio) */}
       {state.services.length > 0 && (
-        <Section title={tr("tune_services")}>
-          <div style={{ fontSize: 11, color: t.textFaint, marginBottom: 4, marginTop: -2 }}>
-            {tr("tune_services_hint")}
-          </div>
-          {state.services.map((s) => (
-            <Row key={s.name} label={s.name} tip={SERVICE_TIPS[s.name]}>
-              <Toggle on={s.active} disabled={busy === "svc"}
-                onClick={() => apply("set_service", { name: s.name, enable: !s.active }, "svc")} />
-            </Row>
-          ))}
-        </Section>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, flex: "1 1 300px", minWidth: 280 }}>
+          <Section title={tr("tune_services")}>
+            <div style={{ fontSize: 11, color: t.textFaint, marginBottom: 4, marginTop: -2 }}>
+              {tr("tune_services_hint")}
+            </div>
+            {state.services.map((s) => (
+              <Row key={s.name} label={s.name} tip={SERVICE_TIPS[s.name]}>
+                <Toggle on={s.active} disabled={busy === "svc"}
+                  onClick={() => apply("set_service", { name: s.name, enable: !s.active }, "svc")} />
+              </Row>
+            ))}
+          </Section>
+        </div>
+      )}
+
+      {/* Coluna 3: Agendador de I/O (alto) */}
+      {state.io_schedulers.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, flex: "1 1 300px", minWidth: 280 }}>
+          <Section title={tr("tune_io")}>
+            <div style={{ fontSize: 11, color: t.textFaint, marginBottom: 4, marginTop: -2 }}>
+              {tr("tune_io_hint")}
+            </div>
+            {state.io_schedulers.map((d) => (
+              <Row key={d.device} label={<>{d.device}{diskTypeBadge(d.disk_type)}</>}>
+                <Dropdown options={d.available} value={d.current}
+                  onSelect={(s) => apply("set_io_scheduler", { device: d.device, scheduler: s }, "io")} />
+              </Row>
+            ))}
+          </Section>
+        </div>
       )}
     </div>
   );
