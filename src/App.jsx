@@ -286,24 +286,14 @@ function WindowControls({ t }) {
 // só aparece se o sistema suportar. Aplicação imediata + persistente no reboot.
 // Recarrega ao montar (detecta discos novos conectados).
 function InfoTip({ t, text }) {
-  const [show, setShow] = useState(false);
   return (
-    <span
-      onMouseEnter={() => setShow(true)}
-      onMouseLeave={() => setShow(false)}
-      style={{ position: "relative", display: "inline-flex", marginLeft: 6, verticalAlign: "middle" }}>
+    <span className="mc-tip" style={{ position: "relative", display: "inline-flex", marginLeft: 6,
+      verticalAlign: "middle" }}>
       <span style={{ width: 15, height: 15, borderRadius: 8, border: `1px solid ${t.textFaint}`,
         color: t.textFaint, fontSize: 10, fontWeight: 800, display: "grid", placeItems: "center",
         cursor: "help", flexShrink: 0, userSelect: "none" }}>?</span>
-      {show && (
-        <span style={{ position: "absolute", bottom: "calc(100% + 10px)", right: -8,
-          width: 230, background: t.bg, border: `1px solid ${t.stroke}`, borderRadius: 8,
-          padding: "9px 11px", fontSize: 11, color: t.textDim, lineHeight: 1.45, zIndex: 500,
-          boxShadow: "0 8px 24px rgba(0,0,0,0.35)", fontWeight: 400, textAlign: "left",
-          pointerEvents: "none", whiteSpace: "normal" }}>
-          {text}
-        </span>
-      )}
+      <span className="mc-tip-bubble" style={{ background: t.bg, border: `1px solid ${t.stroke}`,
+        color: t.textDim, boxShadow: "0 8px 24px rgba(0,0,0,0.35)" }}>{text}</span>
     </span>
   );
 }
@@ -436,6 +426,34 @@ function TunePage({ t, tr }) {
                 ...(state.network.bbr_available ? ["bbr"] : [])]))}
               value={state.network.current_cc}
               onSelect={(algo) => apply("set_congestion_control", { algo }, "cc")} />
+          </Row>
+        </Section>
+      )}
+
+      {/* Escrita em disco (dirty ratios) */}
+      {(state.dirty_ratio != null || state.dirty_bg_ratio != null) && (
+        <Section title={tr("tune_writeback")}>
+          {state.dirty_bg_ratio != null && (
+            <Row label={tr("tune_dirty_bg")} tip={tr("tune_dirty_bg_hint")}>
+              <Slider value={state.dirty_bg_ratio} min={1} max={50}
+                onCommit={(val) => apply("set_dirty_bg_ratio", { value: val }, "dbg")} />
+            </Row>
+          )}
+          {state.dirty_ratio != null && (
+            <Row label={tr("tune_dirty")} tip={tr("tune_dirty_hint")}>
+              <Slider value={state.dirty_ratio} min={1} max={80}
+                onCommit={(val) => apply("set_dirty_ratio", { value: val }, "dr")} />
+            </Row>
+          )}
+        </Section>
+      )}
+
+      {/* Sistema */}
+      {state.nmi_watchdog != null && (
+        <Section title={tr("tune_system")}>
+          <Row label={tr("tune_nmi")} tip={tr("tune_nmi_hint")}>
+            <Toggle on={state.nmi_watchdog} disabled={busy === "nmi"}
+              onClick={() => apply("set_nmi_watchdog", { on: !state.nmi_watchdog }, "nmi")} />
           </Row>
         </Section>
       )}
