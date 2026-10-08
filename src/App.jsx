@@ -98,9 +98,28 @@ export default function App() {
   const [tempAlert, setTempAlert] = useState(null); // {kind:'cpu'|'gpu', temp} quando >90°C
   const alertDismissedRef = useRef(0); // timestamp de quando foi dispensado (evita spam)
   const [sysInfo, setSysInfo] = useState(null);
+  const [isMaximized, setIsMaximized] = useState(false);
   const prefsLoaded = useRef(false);
   const t = dark ? THEMES.dark : THEMES.light;
   const tr = (key) => STRINGS[lang][key] || STRINGS.en[key] || key;
+
+  // Abre maximizado e monitora se a janela está maximizada para ajustar bordas e layout
+  useEffect(() => {
+    try {
+      const win = getCurrentWindow();
+      win.maximize().catch(() => {});
+      win.isMaximized().then(setIsMaximized).catch(() => {});
+      const unlisten = win.onResized(async () => {
+        try {
+          const max = await win.isMaximized();
+          setIsMaximized(max);
+        } catch {}
+      });
+      return () => {
+        unlisten.then((f) => f()).catch(() => {});
+      };
+    } catch {}
+  }, []);
 
   // Carrega preferências salvas (tema, idioma) ao iniciar.
   useEffect(() => {
@@ -168,8 +187,17 @@ export default function App() {
   }, []);
 
   return (
-    <div style={{ background: t.bg, height: "100%", display: "flex", color: t.text,
-      border: `1px solid ${t.stroke}`, borderRadius: 10, overflow: "hidden", boxSizing: "border-box" }}>
+    <div style={{
+      background: t.bg,
+      width: "100%",
+      height: "100%",
+      display: "flex",
+      color: t.text,
+      border: isMaximized ? "none" : `1px solid ${t.stroke}`,
+      borderRadius: isMaximized ? 0 : 10,
+      overflow: "hidden",
+      boxSizing: "border-box",
+    }}>
       {/* Banner de alerta de temperatura alta (>90°C) */}
       {tempAlert && (
         <div style={{ position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)",
@@ -191,8 +219,19 @@ export default function App() {
         </div>
       )}
       {/* Sidebar */}
-      <div style={{ width: 92, background: t.panel, borderRight: `1px solid ${t.stroke}`,
-        display: "flex", flexDirection: "column", alignItems: "center", padding: "18px 0", gap: 4 }}>
+      <div style={{
+        width: 92,
+        flexShrink: 0,
+        background: t.panel,
+        borderRight: `1px solid ${t.stroke}`,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        padding: "18px 0",
+        gap: 4,
+        overflowY: "auto",
+        overflowX: "hidden",
+      }}>
         <img src={appIcon} alt="MachCtrl" style={{ width: 44, height: 44, borderRadius: 12, marginBottom: 16 }} />
         {NAV.map((n) => {
           const on = active === n.id;
@@ -211,9 +250,16 @@ export default function App() {
       </div>
 
       {/* Main */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <div data-tauri-drag-region style={{ height: 60, borderBottom: `1px solid ${t.stroke}`, display: "flex",
-          alignItems: "center", justifyContent: "space-between", padding: "0 16px 0 26px" }}>
+      <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div data-tauri-drag-region style={{
+          height: 60,
+          flexShrink: 0,
+          borderBottom: `1px solid ${t.stroke}`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 16px 0 26px",
+        }}>
           <div data-tauri-drag-region>
             <div style={{ fontSize: 18, fontWeight: 800 }}>MachCtrl</div>
             <div style={{ fontSize: 11, color: t.textFaint }}>
@@ -239,11 +285,11 @@ export default function App() {
               {dark ? <Sun size={15} color={t.textDim} /> : <Moon size={15} color={t.textDim} />}
             </button>
             {/* controles de janela estilo v2.0 */}
-            <WindowControls t={t} />
+            <WindowControls t={t} isMaximized={isMaximized} />
           </div>
         </div>
 
-        <div style={{ flex: 1, overflow: "auto", padding: 24 }}>
+        <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: "auto", overflowX: "hidden", padding: 24 }}>
           {active === "overview" && <Overview t={t} tr={tr} snap={snap} sysInfo={sysInfo} cpuHist={cpuHist.current} cpuHist2={cpuHist2.current} ramHist={ramHist.current} gpuHist={gpuHist.current} />}
           {active === "cpu" && <CpuPage t={t} tr={tr} snap={snap} />}
           {active === "memory" && <MemoryPage t={t} tr={tr} snap={snap} />}
@@ -260,7 +306,7 @@ export default function App() {
 }
 
 // Controles de janela (minimizar / maximizar / fechar) estilo v2.0.
-function WindowControls({ t }) {
+function WindowControls({ t, isMaximized }) {
   const win = getCurrentWindow();
   const btn = (onClick, children, hoverBg, title) => (
     <button onClick={onClick} title={title} style={{
@@ -275,7 +321,7 @@ function WindowControls({ t }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 2, marginLeft: 4 }}>
       {btn(() => win.minimize(), <Minus size={15} />)}
-      {btn(() => win.toggleMaximize(), <Square size={12} />)}
+      {btn(() => win.toggleMaximize(), <Square size={isMaximized ? 10 : 12} />)}
       {btn(() => win.close(), <X size={16} />, "#ef4444")}
     </div>
   );
