@@ -107,7 +107,6 @@ export default function App() {
   useEffect(() => {
     try {
       const win = getCurrentWindow();
-      win.maximize().catch(() => {});
       win.isMaximized().then(setIsMaximized).catch(() => {});
       const unlisten = win.onResized(async () => {
         try {

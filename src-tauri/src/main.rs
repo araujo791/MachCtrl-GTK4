@@ -984,11 +984,8 @@ fn set_service(name: String, enable: bool) -> Result<(), String> {
 
 fn main() {
     #[cfg(target_os = "linux")]
-    {
-        // Evita conflitos de renderização no WebKitGTK sem desligar o compositor acelerado
-        if std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").is_err() {
-            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-        }
+    if std::env::var_os("WEBKIT_SKIA_ENABLE_CPU_RENDERING").is_none() {
+        std::env::set_var("WEBKIT_SKIA_ENABLE_CPU_RENDERING", "1");
     }
 
     // Carrega as configs salvas (curvas/modos definidos anteriormente).
