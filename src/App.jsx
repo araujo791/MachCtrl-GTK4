@@ -10,7 +10,7 @@ import {
 import {
   LayoutDashboard, Cpu, MemoryStick, HardDrive, Fan, Zap,
   Trash2, Gauge, Info, Sun, Moon, Activity, Usb, Database,
-  ArrowDown, ArrowUp, Minus, Square, X, Heart, AlertTriangle,
+  ArrowDown, ArrowUp, Minus, Square, X, Heart, AlertTriangle, Battery, BatteryCharging,
 } from "lucide-react";
 
 // ---------- temas ----------
@@ -163,7 +163,8 @@ export default function App() {
         else push(cpuHist, s.cpu_usage);
         if (s.sockets && s.sockets[1]) push(cpuHist2, s.sockets[1].usage_pct);
         push(ramHist, s.mem_pct);
-        push(gpuHist, s.gpus[0]?.usage_pct ?? 0);
+        const g0 = s.gpus[0];
+        push(gpuHist, g0?.usage_pct ?? (g0?.freq_mhz != null && g0?.freq_max_mhz ? (g0.freq_mhz / g0.freq_max_mhz) * 100 : 0));
         setSnap(s);
 
         // Alerta de temperatura: dispara se CPU ou GPU passar de 90°C.
@@ -294,7 +295,7 @@ export default function App() {
           {active === "memory" && <MemoryPage t={t} tr={tr} snap={snap} />}
           {active === "disks" && <DisksPage t={t} tr={tr} snap={snap} />}
           {active === "fans" && <FansPage t={t} tr={tr} />}
-          {active === "energy" && <EnergyPage t={t} tr={tr} />}
+          {active === "energy" && <EnergyPage t={t} tr={tr} snap={snap} />}
           {active === "cleaner" && <CleanerPage t={t} tr={tr} lang={lang} />}
           {active === "tune" && <TunePage t={t} tr={tr} />}
           {active === "about" && <AboutPage t={t} tr={tr} sysInfo={sysInfo} />}
@@ -603,18 +604,26 @@ function Overview({ t, tr, snap, sysInfo, cpuHist, cpuHist2, ramHist, gpuHist })
           </div>
         </div>
 
+        {/* Bateria (só em notebook) */}
+        {snap.battery && <BatteryCard t={t} tr={tr} b={snap.battery} />}
+
         {/* GPU detalhado */}
-        <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: 20,
+        {(gpu || !snap.battery) && <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: 20,
           display: "flex", flexDirection: "column", gap: 12 }}>
           <CardHead t={t} icon={Activity} accent={ACCENT.purple} title="GPU" badge={gpu?.vendor?.toUpperCase()} />
           {gpu ? (
             <>
-              <BigValue t={t} value={gpu.usage_pct != null ? gpu.usage_pct.toFixed(0) : "—"} unit={gpu.usage_pct != null ? "%" : ""} />
+              {gpu.usage_pct == null && gpu.freq_mhz != null ? (
+                <BigValue t={t} value={gpu.freq_mhz.toFixed(0)} unit="MHz" />
+              ) : (
+                <BigValue t={t} value={gpu.usage_pct != null ? gpu.usage_pct.toFixed(0) : "—"} unit={gpu.usage_pct != null ? "%" : ""} />
+              )}
               <div style={{ marginTop: -4 }}><Sparkline data={gpuHist} color={ACCENT.purple} /></div>
               <div style={{ fontSize: 12, color: t.textFaint, lineHeight: 1.4 }}>{gpu.name}</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 2 }}>
                 <MiniStat t={t} k={tr("temp")} v={gpu.temp_c != null ? `${gpu.temp_c.toFixed(0)}°C` : "—"} c={ACCENT.green} />
                 {gpu.fan_rpm != null && <MiniStat t={t} k={tr("fan")} v={`${gpu.fan_rpm} RPM`} />}
+                {gpu.freq_max_mhz != null && <MiniStat t={t} k={tr("gpu_freq_max")} v={`${gpu.freq_max_mhz.toFixed(0)} MHz`} />}
                 {gpu.vram_total_mb != null && (
                   <MiniStat t={t} k="VRAM" v={`${(gpu.vram_used_mb / 1024).toFixed(1)}/${(gpu.vram_total_mb / 1024).toFixed(1)} GB`} c={ACCENT.purple} />
                 )}
@@ -631,7 +640,7 @@ function Overview({ t, tr, snap, sysInfo, cpuHist, cpuHist2, ramHist, gpuHist })
           ) : (
             <div style={{ color: t.textFaint, fontSize: 13, padding: "20px 0", textAlign: "center" }}>{tr("no_gpu")}</div>
           )}
-        </div>
+        </div>}
       </div>
 
       {/* Processos + Rede */}
@@ -719,6 +728,104 @@ function MiniStat({ t, k, v, c }) {
     <div style={{ background: t.panel, borderRadius: 8, padding: "8px 10px" }}>
       <div style={{ fontSize: 9, color: t.textFaint, fontWeight: 600 }}>{k}</div>
       <div style={{ fontSize: 13, fontWeight: 700, color: c || t.text }}>{v}</div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Bateria (notebooks). snap.battery é null em desktop e a UI esconde tudo.
+// ---------------------------------------------------------------------------
+function fmtHours(h) {
+  const m = Math.max(1, Math.round(h * 60));
+  const hh = Math.floor(m / 60), mm = m % 60;
+  return hh > 0 ? `${hh}h ${String(mm).padStart(2, "0")}min` : `${mm}min`;
+}
+function batteryColor(b) {
+  if (b.status === "charging" || b.status === "full") return ACCENT.green;
+  if (b.percent <= 15) return ACCENT.red;
+  if (b.percent <= 30) return ACCENT.orange;
+  return ACCENT.green;
+}
+function healthColor(h) {
+  const r = Math.round(h); // mesma regra do número exibido, senão "60%" aparece com a cor de 59%
+  return r >= 80 ? ACCENT.green : r >= 60 ? ACCENT.orange : ACCENT.red;
+}
+function batteryStatusText(b, tr) {
+  const base = tr(`bat_${b.status}`);
+  if (b.hours_left == null) return base;
+  const eta = b.status === "charging" ? tr("bat_to_full") : tr("bat_left");
+  return `${base} · ${fmtHours(b.hours_left)} ${eta}`;
+}
+function BatteryBar({ t, pct, color }) {
+  return (
+    <div style={{ height: 8, background: t.panel, borderRadius: 4, overflow: "hidden" }}>
+      <div style={{ height: "100%", width: `${Math.min(100, Math.max(0, pct))}%`, background: color,
+        borderRadius: 4, transition: "width .6s ease" }} />
+    </div>
+  );
+}
+function BatteryCard({ t, tr, b }) {
+  const c = batteryColor(b);
+  const Icon = b.status === "charging" ? BatteryCharging : Battery;
+  return (
+    <div style={{ background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18, padding: 20,
+      display: "flex", flexDirection: "column", gap: 12 }}>
+      <CardHead t={t} icon={Icon} accent={c} title={tr("battery")} badge={b.ac_online ? tr("bat_ac_on") : undefined} />
+      <BigValue t={t} value={b.percent.toFixed(0)} unit="%" />
+      <BatteryBar t={t} pct={b.percent} color={c} />
+      <div style={{ fontSize: 12, color: t.textFaint, lineHeight: 1.4 }}>{batteryStatusText(b, tr)}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 2 }}>
+        {b.power_w != null && b.power_w >= 0.05 && <MiniStat t={t} k={tr("bat_power")} v={`${b.power_w.toFixed(1)} W`} />}
+        {b.health_pct != null && <MiniStat t={t} k={tr("bat_health")} v={`${b.health_pct.toFixed(0)}%`} c={healthColor(b.health_pct)} />}
+        {b.voltage_v != null && <MiniStat t={t} k={tr("bat_voltage")} v={`${b.voltage_v.toFixed(1)} V`} />}
+      </div>
+    </div>
+  );
+}
+function BatteryDetail({ t, tr, b }) {
+  const c = batteryColor(b);
+  const Icon = b.status === "charging" ? BatteryCharging : Battery;
+  const wh = (v) => `${v.toFixed(1)} Wh`;
+  const fields = [
+    b.power_w != null && b.power_w >= 0.05 && [tr("bat_power"), `${b.power_w.toFixed(1)} W`],
+    b.voltage_v != null && [tr("bat_voltage"), `${b.voltage_v.toFixed(2)} V`],
+    b.full_wh != null && [tr("bat_capacity"), b.design_wh != null ? `${wh(b.full_wh)} / ${wh(b.design_wh)}` : wh(b.full_wh)],
+    b.cycles != null && [tr("bat_cycles"), `${b.cycles}`],
+    b.temp_c != null && [tr("temp"), `${b.temp_c.toFixed(0)}°C`],
+    b.technology && [tr("bat_tech"), b.technology],
+    (b.manufacturer || b.model) && [tr("bat_model"), [b.manufacturer, b.model].filter(Boolean).join(" · ")],
+    [tr("bat_ac"), b.ac_online ? tr("bat_ac_on") : tr("bat_ac_off")],
+  ].filter(Boolean);
+  return (
+    <div style={{ gridColumn: "1 / -1", background: t.card, border: `1px solid ${t.stroke}`, borderRadius: 18,
+      padding: 24, display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ width: 52, height: 52, borderRadius: 14, background: `${c}22`, display: "grid", placeItems: "center" }}>
+          <Icon size={26} color={c} />
+        </div>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+            <span style={{ fontSize: 34, fontWeight: 800, lineHeight: 1 }}>{b.percent.toFixed(0)}%</span>
+            <span style={{ fontSize: 13, color: t.textDim, fontWeight: 600 }}>{batteryStatusText(b, tr)}</span>
+          </div>
+          <div style={{ marginTop: 10 }}><BatteryBar t={t} pct={b.percent} color={c} /></div>
+        </div>
+      </div>
+
+      {b.health_pct != null && (
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 6 }}>
+            <span style={{ color: t.textDim, fontWeight: 600 }}>{tr("bat_health")}</span>
+            <span style={{ color: healthColor(b.health_pct), fontWeight: 800 }}>{b.health_pct.toFixed(0)}%</span>
+          </div>
+          <BatteryBar t={t} pct={b.health_pct} color={healthColor(b.health_pct)} />
+          <div style={{ fontSize: 11, color: t.textFaint, marginTop: 6 }}>{tr("bat_health_desc")}</div>
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
+        {fields.map(([k, v]) => <MiniStat key={k} t={t} k={k} v={v} />)}
+      </div>
     </div>
   );
 }
@@ -1324,7 +1431,7 @@ function FanCurveModal({ t, tr, fan, role, displayName, onClose }) {
   );
 }
 
-function EnergyPage({ t, tr }) {
+function EnergyPage({ t, tr, snap }) {
   const [info, setInfo] = useState(null);
   const load = useCallback(() => { invoke("get_profiles").then(setInfo).catch(() => setInfo(null)); }, []);
   useEffect(() => { load(); }, [load]);
@@ -1336,6 +1443,7 @@ function EnergyPage({ t, tr }) {
   if (!info) return <Loading t={t} />;
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 18 }}>
+      {snap?.battery && <BatteryDetail t={t} tr={tr} b={snap.battery} />}
       {DEFS.filter((d) => info.available.includes(d.id)).map((d) => {
         const on = info.current === d.id;
         return (
@@ -1343,7 +1451,7 @@ function EnergyPage({ t, tr }) {
             border: `1px solid ${on ? d.c + "66" : t.stroke}`, borderRadius: 18, padding: 24,
             display: "flex", flexDirection: "column", alignItems: "center", gap: 12, position: "relative" }}>
             {on && <span style={{ position: "absolute", top: 14, right: 14, fontSize: 10, fontWeight: 800,
-              color: d.c, background: `${d.c}22`, padding: "3px 10px", borderRadius: 6 }}>ATIVO</span>}
+              color: d.c, background: `${d.c}22`, padding: "3px 10px", borderRadius: 6 }}>{tr("active").toUpperCase()}</span>}
             <div style={{ width: 56, height: 56, borderRadius: 16, marginTop: 8,
               background: on ? `linear-gradient(135deg, ${d.c}, ${ACCENT.red})` : t.panel,
               display: "grid", placeItems: "center" }}>

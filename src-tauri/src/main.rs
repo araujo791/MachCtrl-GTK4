@@ -1,6 +1,7 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod battery;
 mod cleaner;
 mod fancontrol;
 mod gpu;
@@ -77,6 +78,8 @@ struct GpuDto {
     vram_total_mb: Option<f64>,
     fan_pct: Option<i32>,
     fan_rpm: Option<i64>,
+    freq_mhz: Option<f64>,
+    freq_max_mhz: Option<f64>,
 }
 
 #[derive(Serialize)]
@@ -132,6 +135,8 @@ struct Snapshot {
     mem_total_gb: f64,
     mem_pct: f64,
     gpus: Vec<GpuDto>,
+    /// None em desktop (sem bateria): a UI esconde tudo relacionado.
+    battery: Option<battery::BatteryInfo>,
     disks: Vec<DiskDto>,
     net: Vec<NetDto>,
     top_procs: Vec<ProcDto>,
@@ -294,6 +299,8 @@ fn get_snapshot(state: tauri::State<SharedState>) -> Snapshot {
             vram_total_mb: g.vram_total_mb,
             fan_pct: g.fan_pct,
             fan_rpm: g.fan_rpm,
+            freq_mhz: g.freq_mhz,
+            freq_max_mhz: g.freq_max_mhz,
         })
         .collect();
 
@@ -375,6 +382,7 @@ fn get_snapshot(state: tauri::State<SharedState>) -> Snapshot {
         mem_total_gb: mem.total_gb,
         mem_pct: mem.usage_pct,
         gpus,
+        battery: battery::read_battery(),
         disks,
         net,
         top_procs,

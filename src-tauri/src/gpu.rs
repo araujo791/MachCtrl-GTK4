@@ -1,6 +1,7 @@
 // Port de get_gpu_info / nvidia_get_fan_info / nvidia_set_fan_speed / nvidia_set_fan_auto
 // (backend/machctrl_server.py linhas 395-528)
 
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[derive(Clone, Debug, Default)]
@@ -14,6 +15,9 @@ pub struct GpuInfo {
     pub usage_pct: Option<f64>,
     pub vram_used_mb: Option<f64>,
     pub vram_total_mb: Option<f64>,
+    /// Frequência atual / máxima em MHz (Intel integrada: o sysfs não expõe % de uso)
+    pub freq_mhz: Option<f64>,
+    pub freq_max_mhz: Option<f64>,
 }
 
 /// AMD: lê via /sys/class/drm/cardN/device/ (hwmon1/temp1_input, gpu_busy_percent, etc.)
@@ -96,6 +100,7 @@ pub fn read_amd_gpus() -> Vec<GpuInfo> {
             usage_pct: busy,
             vram_used_mb,
             vram_total_mb,
+            ..Default::default()
         });
     }
     gpus
@@ -142,14 +147,74 @@ pub fn read_nvidia_gpus() -> Vec<GpuInfo> {
             usage_pct,
             vram_used_mb,
             vram_total_mb,
+            ..Default::default()
         });
     }
     gpus
 }
 
 pub fn read_all_gpus() -> Vec<GpuInfo> {
+    // Dedicadas primeiro: em notebook híbrido, gpus[0] é a que importa.
     let mut gpus = read_amd_gpus();
     gpus.extend(read_nvidia_gpus());
+    gpus.extend(read_intel_gpus());
+    gpus
+}
+
+fn read_num(p: &Path) -> Option<f64> {
+    std::fs::read_to_string(p).ok()?.trim().parse::<f64>().ok()
+}
+
+/// Primeiro valor numérico que existir entre os caminhos candidatos.
+/// i915 usa gt_*_freq_mhz; kernels novos movem para gt/gt0/rps_*; o driver xe usa tile0/gt0/freq0.
+fn first_num(card: &Path, rels: &[&str]) -> Option<f64> {
+    rels.iter().find_map(|r| read_num(&card.join(r)))
+}
+
+/// Intel integrada (ou Arc): detecta pelo vendor 0x8086 e lê as frequências do sysfs.
+/// Não há "uso %" confiável sem perf/intel_gpu_top, então usage_pct fica None.
+pub fn read_intel_gpus() -> Vec<GpuInfo> {
+    read_intel_gpus_from(Path::new("/sys/class/drm"))
+}
+
+pub fn read_intel_gpus_from(root: &Path) -> Vec<GpuInfo> {
+    let mut gpus = Vec::new();
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return gpus;
+    };
+    let mut cards: Vec<PathBuf> = entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            let n = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            n.starts_with("card") && !n.contains('-') // ignora cardN-HDMI-A-1 etc.
+        })
+        .collect();
+    cards.sort();
+
+    for (idx, card) in cards.iter().enumerate() {
+        let vendor = std::fs::read_to_string(card.join("device/vendor")).unwrap_or_default();
+        if vendor.trim() != "0x8086" {
+            continue;
+        }
+        let freq_mhz = first_num(
+            card,
+            &["gt_act_freq_mhz", "gt/gt0/rps_act_freq_mhz", "device/tile0/gt0/freq0/cur_freq", "gt_cur_freq_mhz"],
+        );
+        let freq_max_mhz = first_num(
+            card,
+            &["gt_RP0_freq_mhz", "gt/gt0/rps_RP0_freq_mhz", "device/tile0/gt0/freq0/max_freq", "gt_max_freq_mhz"],
+        )
+        .filter(|m| *m > 0.0);
+        gpus.push(GpuInfo {
+            vendor: "intel".to_string(),
+            index: idx as i32,
+            name: "Intel Graphics".to_string(),
+            freq_mhz,
+            freq_max_mhz,
+            ..Default::default()
+        });
+    }
     gpus
 }
 
@@ -209,4 +274,60 @@ pub fn nvidia_set_fan_auto(gpu_index: i32) -> Result<(), String> {
 
 fn run_with_timeout(cmd: &str, args: &[&str]) -> Result<std::process::Output, String> {
     Command::new(cmd).args(args).output().map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn w(p: &Path, val: &str) {
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, format!("{val}\n")).unwrap();
+    }
+
+    fn fixture(tag: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("machctrl-gpu-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    // Estrutura do /sys/class/drm do notebook Dell (card1 = Intel, com gt_*_freq_mhz e conectores cardN-*).
+    // Os valores de frequência são ilustrativos; os nomes dos arquivos vêm do notebook real.
+    #[test]
+    fn intel_igpu_i915() {
+        let root = fixture("intel");
+        w(&root.join("card1/device/vendor"), "0x8086");
+        w(&root.join("card1/gt_act_freq_mhz"), "350");
+        w(&root.join("card1/gt_cur_freq_mhz"), "400");
+        w(&root.join("card1/gt_RP0_freq_mhz"), "700");
+        w(&root.join("card1/gt_max_freq_mhz"), "700");
+        fs::create_dir_all(root.join("card1-eDP-1")).unwrap();
+        fs::create_dir_all(root.join("card1-HDMI-A-1")).unwrap();
+        let g = read_intel_gpus_from(&root);
+        assert_eq!(g.len(), 1, "conectores cardN-* não contam como GPU");
+        assert_eq!(g[0].vendor, "intel");
+        assert_eq!(g[0].freq_mhz, Some(350.0), "prefere a frequência real (act) à solicitada (cur)");
+        assert_eq!(g[0].freq_max_mhz, Some(700.0));
+        assert_eq!(g[0].usage_pct, None);
+    }
+
+    #[test]
+    fn intel_falls_back_to_cur_freq() {
+        let root = fixture("fallback");
+        w(&root.join("card0/device/vendor"), "0x8086");
+        w(&root.join("card0/gt_cur_freq_mhz"), "300");
+        let g = read_intel_gpus_from(&root);
+        assert_eq!(g[0].freq_mhz, Some(300.0));
+        assert_eq!(g[0].freq_max_mhz, None);
+    }
+
+    #[test]
+    fn amd_and_missing_dir_are_ignored() {
+        let root = fixture("amd");
+        w(&root.join("card0/device/vendor"), "0x1002");
+        assert!(read_intel_gpus_from(&root).is_empty());
+        assert!(read_intel_gpus_from(Path::new("/nonexistent-xyz")).is_empty());
+    }
 }
