@@ -10,7 +10,6 @@ import {
   NetworkInterface,
   ProcessItem,
   SystemService,
-  SystemViewMode,
 } from '../types/machctrl';
 
 export interface FanCurvePoint {
@@ -19,8 +18,7 @@ export interface FanCurvePoint {
 }
 
 interface MachCtrlContextType {
-  systemViewMode: SystemViewMode;
-  setSystemViewMode: (mode: SystemViewMode) => void;
+  isLaptop: boolean;
   activeTab: string;
   setActiveTab: (tab: string) => void;
   theme: 'light' | 'dark';
@@ -46,6 +44,7 @@ interface MachCtrlContextType {
   powerMode: 'economia' | 'equilibrado' | 'desempenho';
   setPowerMode: (mode: 'economia' | 'equilibrado' | 'desempenho') => void;
   battery: {
+    present: boolean;
     percent: number;
     healthPercent: number;
     voltage: number;
@@ -107,7 +106,8 @@ function generateThreads(count: number, baseTemp: number): CpuThreadData[] {
 }
 
 export const MachCtrlProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [systemViewMode, setSystemViewMode] = useState<SystemViewMode>('notebook');
+  // Automatic Chassis / Hardware Detection (laptops have BAT0/BAT1 ACPI controllers)
+  const [isLaptop] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [lang, setLang] = useState<'BR' | 'EN'>('BR');
@@ -116,32 +116,32 @@ export const MachCtrlProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [isCleaningAll, setIsCleaningAll] = useState(false);
 
   // Top Processes
-  const [topProcesses, setTopProcesses] = useState<ProcessItem[]>(DEFAULT_PROCESSES);
+  const [topProcesses] = useState<ProcessItem[]>(DEFAULT_PROCESSES);
 
   // Networks
   const [networks, setNetworks] = useState<NetworkInterface[]>(DEFAULT_NETWORKS);
 
   // Sockets & Threads
-  const [sockets, setSockets] = useState<CpuSocketData[]>([
+  const [sockets] = useState<CpuSocketData[]>([
     {
       id: 0,
-      model: 'Intel(R) Xeon(R) CPU E5-2680 v4 @ 2.40GHz',
+      model: 'Intel(R) Core(R) i7 / Xeon CPU E5-2680 v4 @ 2.40GHz',
       cores: 14,
       threads: 28,
       freqGhz: 2.90,
-      usageAvg: 3,
-      tempAvg: 47,
-      threadList: generateThreads(28, 47),
+      usageAvg: 9,
+      tempAvg: 48,
+      threadList: generateThreads(28, 48),
     },
     {
       id: 1,
-      model: 'Intel(R) Xeon(R) CPU E5-2680 v4 @ 2.40GHz',
+      model: 'Intel(R) Core(R) i7 / Xeon CPU E5-2680 v4 @ 2.40GHz',
       cores: 14,
       threads: 28,
       freqGhz: 2.79,
-      usageAvg: 1,
-      tempAvg: 53,
-      threadList: generateThreads(28, 53),
+      usageAvg: 3,
+      tempAvg: 51,
+      threadList: generateThreads(28, 51),
     },
   ]);
 
@@ -172,9 +172,9 @@ export const MachCtrlProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     { id: 'd11', name: 'Programas', mountPoint: '/mnt/Programas', device: 'sdi1', fsType: 'ntfs3', mediaType: 'HDD', usedGb: 402.5, totalGb: 931.5, usagePercent: 43.2, readMb: 0.0, writeMb: 0.0, readHistory: [0, 0, 0, 0, 0, 0, 0], writeHistory: [0, 0, 0, 0, 0, 0, 0] },
   ]);
 
-  // Fans Devices (as in screenshot fans.png)
+  // Fans Devices
   const [fans, setFans] = useState<FanDevice[]>([
-    { id: 'fan-gpu', name: 'GPU', type: 'GPU', targetDevice: 'NVIDIA RTX 4070 / AMD GPU', mode: 'Curva', rpm: 1103, maxRpm: 3200, pwmPercent: 38, color: '#8b5cf6', hasCurveSupport: true },
+    { id: 'fan-gpu', name: 'GPU', type: 'GPU', targetDevice: 'NVIDIA RTX / Intel Xe', mode: 'Curva', rpm: 1103, maxRpm: 3200, pwmPercent: 38, color: '#8b5cf6', hasCurveSupport: true },
     { id: 'fan-cpu-1', name: 'CPU 1', type: 'CPU', targetDevice: 'CPU Socket 0 Primary', mode: 'Automático', rpm: 1804, maxRpm: 2600, pwmPercent: 70, color: '#f97316' },
     { id: 'fan-cpu-2', name: 'CPU 2', type: 'CPU', targetDevice: 'CPU Socket 0 Auxiliary', mode: 'Automático', rpm: 1816, maxRpm: 2600, pwmPercent: 75, color: '#f97316' },
     { id: 'fan-cpu-3', name: 'CPU 3', type: 'CPU', targetDevice: 'CPU Socket 1 Primary', mode: 'Automático', rpm: 0, maxRpm: 2600, pwmPercent: 50, color: '#f97316' },
@@ -231,6 +231,7 @@ export const MachCtrlProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Battery
   const [battery] = useState({
+    present: true,
     percent: 100,
     healthPercent: 60,
     voltage: 16.59,
@@ -265,7 +266,7 @@ export const MachCtrlProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setTimeout(() => {
       setCleanupTasks((prev) => prev.map((t) => ({ ...t, cleaned: true, sizeMb: 0 })));
       setIsCleaningAll(false);
-    }, 1200);
+    }, 1000);
   };
 
   // Adjustments (Tuning)
@@ -344,8 +345,7 @@ export const MachCtrlProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   return (
     <MachCtrlContext.Provider
       value={{
-        systemViewMode,
-        setSystemViewMode,
+        isLaptop,
         activeTab,
         setActiveTab,
         theme,
