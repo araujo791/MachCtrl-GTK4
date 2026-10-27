@@ -1,0 +1,17 @@
+[Unit]
+Description=MachCtrl - Controle de Fans (daemon)
+After=multi-user.target
+Wants=lm-sensors.service
+
+[Service]
+Type=simple
+ExecStart=/opt/machctrl/machctrld
+Restart=on-failure
+RestartSec=5
+User=root
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=machctrld
+
+[Install]
+WantedBy=multi-user.target

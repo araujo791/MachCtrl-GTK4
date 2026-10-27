@@ -1,0 +1,37 @@
+[package]
+name = "machctrl"
+version = "3.0.0"
+description = "Monitor e Otimizador de Hardware para Linux"
+authors = ["araujo791"]
+edition = "2021"
+
+# Binário principal (app com interface Tauri)
+[[bin]]
+name = "machctrl"
+path = "src/main.rs"
+
+# Daemon de controle de fans (roda como serviço systemd, sem interface)
+[[bin]]
+name = "machctrld"
+path = "src/daemon.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+glob = "0.3"
+# Restringe a `time` a versões anteriores à 0.3.42, que mudou a assinatura do
+# método parse() e quebrou a crate `cookie` 0.18 (dependência transitiva do
+# Tauri). Sintoma sem isso: "this method takes 2 arguments but 1 was supplied"
+# ao compilar `cookie`.
+time = ">=0.3.36, <0.3.42"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
