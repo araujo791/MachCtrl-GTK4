@@ -43,7 +43,7 @@ build() {
         exit 1
     fi
 
-    npm install --prefer-offline
+    npm install --prefer-offline --legacy-peer-deps
     npm run tauri build -- --bundles deb 2>/dev/null || npm run tauri build
 }
 
