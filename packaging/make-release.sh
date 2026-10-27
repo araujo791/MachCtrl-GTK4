@@ -38,7 +38,7 @@ VERSION="$(grep '^version' src-tauri/Cargo.toml | head -1 | cut -d'"' -f2)"
 OUT="machctrl-${VERSION}-x86_64"
 
 echo "==> Compilando MachCtrl ${VERSION}…"
-npm install --prefer-offline
+npm install --prefer-offline --legacy-peer-deps
 npm run tauri build
 
 echo "==> Montando o tarball da release…"
