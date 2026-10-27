@@ -1,0 +1,7 @@
+{
+  "name": "MachCtrl - Linux Hardware Monitor & Optimizer",
+  "description": "GTK4 / Libadwaita inspired hardware monitor and system tuner for Linux gaming laptops and PCs, featuring real-time CPU/GPU thermals, fan curves, keyboard RGB, battery thresholds, and performance profiles.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

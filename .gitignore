@@ -1,18 +1,8 @@
-# dependencies
 node_modules/
-
-# build outputs
+build/
 dist/
-src-tauri/target/
-src-tauri/gen/
-
-# logs
-*.log
-npm-debug.log*
-
-# editor
-.vscode/
-.idea/
-*.swp
+coverage/
 .DS_Store
-*.tar.gz
+*.log
+.env*
+!.env.example
