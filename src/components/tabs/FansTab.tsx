@@ -1,5 +1,5 @@
 import React from 'react';
-import { Fan, TrendingUp } from 'lucide-react';
+import { Fan, TrendingUp, Sliders } from 'lucide-react';
 import { useMachCtrl } from '../../context/MachCtrlContext';
 
 export const FansTab: React.FC = () => {
@@ -10,28 +10,28 @@ export const FansTab: React.FC = () => {
       {/* Header title */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+          <h2 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
             <span>Controle de Ventoinhas (Fans)</span>
-            <span className="text-xs font-mono px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-cyan-400 font-bold border border-blue-400/20">
+            <span className="text-xs font-mono px-3 py-1 rounded-full bg-cyan-500/15 text-cyan-400 font-bold border border-cyan-500/25">
               PWM / RPM
             </span>
           </h2>
-          <p className="text-xs text-slate-400 dark:text-slate-500 font-mono mt-0.5">
-            Controle de rotação por hardware e curvas térmicas com animação em tempo real
+          <p className="text-xs text-white/50 font-mono mt-0.5">
+            Controle de rotação por hardware e curvas térmicas com animação fluida
           </p>
         </div>
 
         <button
           onClick={() => setIsCurveEditorOpen(true)}
-          className="px-4 py-2 rounded-2xl text-xs font-bold bg-gradient-to-r from-purple-500/10 to-pink-500/10 hover:from-purple-500/20 hover:to-pink-500/20 text-purple-600 dark:text-purple-300 border border-purple-400/30 flex items-center gap-2 shadow-xs transition-all active:scale-95 self-start sm:self-auto"
+          className="px-4 py-2 rounded-2xl text-xs font-bold bg-white/10 hover:bg-white/15 text-white border border-white/15 flex items-center gap-2 shadow-lg backdrop-blur-xl transition-all active:scale-95 self-start sm:self-auto"
         >
-          <TrendingUp className="w-4 h-4 text-purple-500" />
+          <TrendingUp className="w-4 h-4 text-purple-400" />
           <span>Editor de Curvas Térmicas</span>
         </button>
       </div>
 
       {/* Fan Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
         {fans.map((fan) => {
           const isGpu = fan.type === 'GPU';
           const isSpinning = fan.rpm > 0;
@@ -40,21 +40,28 @@ export const FansTab: React.FC = () => {
           return (
             <div
               key={fan.id}
-              className="bg-white/80 dark:bg-[#121826]/80 rounded-3xl p-5 sm:p-6 border border-slate-200/70 dark:border-white/5 shadow-xs backdrop-blur-md flex flex-col justify-between space-y-4 hover:border-purple-500/30 dark:hover:border-purple-500/30 transition-all duration-300 group"
+              className="glass-card rounded-[30px] p-6 border border-white/10 flex flex-col justify-between space-y-5 hover:border-white/20 transition-all duration-300 relative overflow-hidden"
             >
+              {/* Subtle ambient backlight inside card */}
+              <div
+                className={`absolute -top-12 -right-12 w-36 h-36 rounded-full blur-[60px] pointer-events-none ${
+                  isGpu ? 'bg-purple-500/15' : 'bg-orange-500/15'
+                }`}
+              />
+
               {/* Header: Spinning Turbine Fan + Name + Badge + RPM */}
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between relative z-10">
                 <div className="flex items-center gap-3.5">
-                  {/* Multi-blade turbine fan with rotating aerodynamic glow */}
+                  {/* Multi-blade turbine fan with rotating aerodynamic animation */}
                   <div
-                    className={`w-12 h-12 rounded-2xl flex items-center justify-center border shadow-xs relative transition-all ${
+                    className={`w-13 h-13 rounded-2xl flex items-center justify-center border shadow-lg relative transition-all ${
                       isGpu
-                        ? 'bg-purple-500/10 border-purple-500/30 text-purple-600 dark:text-purple-400'
-                        : 'bg-orange-500/10 border-orange-500/30 text-orange-600 dark:text-orange-400'
+                        ? 'bg-purple-500/15 border-purple-500/30 text-purple-400 shadow-purple-500/20'
+                        : 'bg-orange-500/15 border-orange-500/30 text-orange-400 shadow-orange-500/20'
                     }`}
                   >
                     <Fan
-                      className="w-6 h-6 stroke-[1.8]"
+                      className="w-7 h-7 stroke-[1.8]"
                       style={{
                         animation: isSpinning ? `spin ${spinDuration}s linear infinite` : 'none',
                       }}
@@ -62,29 +69,29 @@ export const FansTab: React.FC = () => {
                   </div>
 
                   <div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-2">
                       <span
-                        className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded-md uppercase ${
+                        className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full uppercase ${
                           isGpu
-                            ? 'bg-purple-500/15 text-purple-700 dark:text-purple-300'
-                            : 'bg-orange-500/15 text-orange-700 dark:text-orange-300'
+                            ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                            : 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
                         }`}
                       >
                         {fan.type}
                       </span>
-                      <h3 className="font-extrabold text-sm text-slate-800 dark:text-slate-100">
+                      <h3 className="font-bold text-sm text-white">
                         {fan.name}
                       </h3>
                     </div>
-                    <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">
+                    <div className="text-[11px] font-mono text-white/50 mt-1">
                       modo:{' '}
                       <strong
                         className={
                           fan.mode === 'Automático'
-                            ? 'text-emerald-500'
+                            ? 'text-emerald-400'
                             : fan.mode === 'Curva'
-                            ? 'text-purple-500'
-                            : 'text-blue-500'
+                            ? 'text-purple-400'
+                            : 'text-cyan-400'
                         }
                       >
                         {fan.mode}
@@ -93,30 +100,32 @@ export const FansTab: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Big Bold RPM */}
+                {/* Bold RPM Counter */}
                 <div className="text-right font-mono">
-                  <div className="text-xl font-extrabold text-blue-600 dark:text-cyan-400">
+                  <div className="text-2xl font-extrabold text-cyan-400">
                     {fan.rpm}
                   </div>
-                  <div className="text-[10px] text-slate-400 font-medium">
+                  <div className="text-[10px] text-white/40 uppercase tracking-wider">
                     RPM
                   </div>
                 </div>
               </div>
 
               {/* PWM Progress Bar */}
-              <div className="space-y-1.5">
+              <div className="space-y-2 relative z-10">
                 <div className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-slate-500 dark:text-slate-400">PWM atual</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                  <span className="text-white/50">PWM atual</span>
+                  <span className="font-bold text-white">
                     {fan.pwmPercent}%
                   </span>
                 </div>
 
-                <div className="w-full bg-slate-100 dark:bg-white/5 rounded-full h-2 overflow-hidden p-0.5">
+                <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden p-0.5">
                   <div
-                    className={`h-1 rounded-full transition-all duration-500 ${
-                      isGpu ? 'bg-purple-500 shadow-sm shadow-purple-500/50' : 'bg-orange-500 shadow-sm shadow-orange-500/50'
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      isGpu
+                        ? 'bg-gradient-to-r from-purple-500 to-fuchsia-400 shadow-xs shadow-purple-500/50'
+                        : 'bg-gradient-to-r from-orange-500 to-amber-400 shadow-xs shadow-orange-500/50'
                     }`}
                     style={{ width: `${fan.pwmPercent}%` }}
                   />
@@ -131,14 +140,14 @@ export const FansTab: React.FC = () => {
                       step="5"
                       value={fan.pwmPercent}
                       onChange={(e) => updateFanPwm(fan.id, parseInt(e.target.value, 10))}
-                      className="w-full accent-blue-600 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg cursor-pointer"
+                      className="w-full accent-cyan-400 h-1.5 bg-white/20 rounded-lg cursor-pointer"
                     />
                   </div>
                 )}
               </div>
 
               {/* Mode Buttons */}
-              <div className="pt-2 border-t border-slate-100 dark:border-white/5 space-y-2">
+              <div className="pt-3 border-t border-white/10 space-y-2.5 relative z-10">
                 <div className="flex items-center gap-1.5">
                   {(['Automático', 'Manual', 'Máximo'] as const).map((m) => {
                     const isSelected = fan.mode === m;
@@ -149,11 +158,11 @@ export const FansTab: React.FC = () => {
                         className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-semibold transition-all border ${
                           isSelected
                             ? m === 'Automático'
-                              ? 'border-emerald-500/80 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 shadow-xs'
+                              ? 'border-emerald-500 text-emerald-400 bg-emerald-500/15 shadow-sm shadow-emerald-500/20'
                               : m === 'Máximo'
-                              ? 'border-rose-500/80 text-rose-600 dark:text-rose-400 bg-rose-500/10 shadow-xs'
-                              : 'border-blue-500/80 text-blue-600 dark:text-blue-400 bg-blue-500/10 shadow-xs'
-                            : 'border-slate-200/80 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/5'
+                              ? 'border-rose-500 text-rose-400 bg-rose-500/15 shadow-sm shadow-rose-500/20'
+                              : 'border-cyan-500 text-cyan-400 bg-cyan-500/15 shadow-sm shadow-cyan-500/20'
+                            : 'border-white/10 text-white/60 hover:bg-white/10 hover:text-white'
                         }`}
                       >
                         {m}
@@ -166,8 +175,8 @@ export const FansTab: React.FC = () => {
                       onClick={() => updateFanMode(fan.id, 'Curva')}
                       className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-semibold transition-all border ${
                         fan.mode === 'Curva'
-                          ? 'border-purple-500/80 text-purple-600 dark:text-purple-400 bg-purple-500/10 shadow-xs'
-                          : 'border-slate-200/80 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/5'
+                          ? 'border-purple-500 text-purple-400 bg-purple-500/15 shadow-sm shadow-purple-500/20'
+                          : 'border-white/10 text-white/60 hover:bg-white/10 hover:text-white'
                       }`}
                     >
                       Curva
@@ -178,9 +187,9 @@ export const FansTab: React.FC = () => {
                 {fan.hasCurveSupport && (
                   <button
                     onClick={() => setIsCurveEditorOpen(true)}
-                    className="w-full py-2 px-3 rounded-xl text-xs font-bold text-purple-600 dark:text-purple-300 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-400/30 flex items-center justify-center gap-1.5 transition-all shadow-xs active:scale-98"
+                    className="w-full py-2 px-3 rounded-xl text-xs font-bold text-purple-300 bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 flex items-center justify-center gap-1.5 transition-all shadow-sm active:scale-98"
                   >
-                    <TrendingUp className="w-3.5 h-3.5 text-purple-500" />
+                    <TrendingUp className="w-3.5 h-3.5 text-purple-400" />
                     <span>Curva ativa — clique para editar</span>
                   </button>
                 )}

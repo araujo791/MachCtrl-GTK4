@@ -26,11 +26,11 @@ export const AjustesTab: React.FC = () => {
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-in fade-in duration-300">
       <div>
-        <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+        <h2 className="text-2xl font-bold tracking-tight text-white">
           Ajustes do Sistema (Kernel Tuning)
         </h2>
-        <p className="text-xs text-slate-400 dark:text-slate-500 font-mono mt-0.5">
-          Alguns ajustes para melhor aproveitar seu hardware, rede, discos, serviços e memória no Linux CachyOS
+        <p className="text-xs text-white/50 font-mono mt-0.5">
+          Otimizações de baixo nível para memória, rede, dirty pages e agendadores de E/S no Linux CachyOS
         </p>
       </div>
 
@@ -38,18 +38,18 @@ export const AjustesTab: React.FC = () => {
         {/* Col 1: Memória, Rede & Escrita em Disco */}
         <div className="space-y-5">
           {/* MEMÓRIA */}
-          <div className="bg-white/80 dark:bg-[#121826]/80 rounded-3xl p-5 sm:p-6 border border-slate-200/70 dark:border-white/5 shadow-xs backdrop-blur-md space-y-4">
-            <h3 className="text-xs font-bold font-mono tracking-wider text-slate-700 dark:text-slate-300 uppercase">
-              MEMÓRIA
+          <div className="glass-card rounded-[30px] p-6 border border-white/10 space-y-4">
+            <h3 className="text-xs font-bold font-mono tracking-wider text-white/70 uppercase">
+              MEMÓRIA & SWAP
             </h3>
 
             {/* Swappiness */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs font-mono">
-                <span className="text-slate-600 dark:text-slate-300 flex items-center gap-1">
-                  Swappiness <HelpCircle className="w-3 h-3 text-slate-400" />
+                <span className="text-white/70 flex items-center gap-1.5">
+                  Swappiness <HelpCircle className="w-3.5 h-3.5 text-white/40" />
                 </span>
-                <span className="font-bold text-blue-600 dark:text-cyan-400">{swappiness}</span>
+                <span className="font-bold text-cyan-400">{swappiness}</span>
               </div>
               <input
                 type="range"
@@ -58,17 +58,17 @@ export const AjustesTab: React.FC = () => {
                 step="5"
                 value={swappiness}
                 onChange={(e) => setSwappiness(parseInt(e.target.value, 10))}
-                className="w-full accent-blue-600 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg cursor-pointer"
+                className="w-full accent-cyan-400 h-1.5 bg-white/10 rounded-lg cursor-pointer"
               />
             </div>
 
             {/* Pressão de cache (vfs) */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs font-mono">
-                <span className="text-slate-600 dark:text-slate-300 flex items-center gap-1">
-                  Pressão de cache (vfs) <HelpCircle className="w-3 h-3 text-slate-400" />
+                <span className="text-white/70 flex items-center gap-1.5">
+                  Pressão de cache (vfs) <HelpCircle className="w-3.5 h-3.5 text-white/40" />
                 </span>
-                <span className="font-bold text-blue-600 dark:text-cyan-400">{vfsCachePressure}</span>
+                <span className="font-bold text-cyan-400">{vfsCachePressure}</span>
               </div>
               <input
                 type="range"
@@ -77,24 +77,24 @@ export const AjustesTab: React.FC = () => {
                 step="5"
                 value={vfsCachePressure}
                 onChange={(e) => setVfsCachePressure(parseInt(e.target.value, 10))}
-                className="w-full accent-blue-600 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg cursor-pointer"
+                className="w-full accent-cyan-400 h-1.5 bg-white/10 rounded-lg cursor-pointer"
               />
             </div>
 
             {/* Huge Pages */}
-            <div className="flex items-center justify-between text-xs font-mono pt-1">
-              <span className="text-slate-600 dark:text-slate-300 flex items-center gap-1">
-                Huge Pages <HelpCircle className="w-3 h-3 text-slate-400" />
+            <div className="flex items-center justify-between text-xs font-mono pt-2">
+              <span className="text-white/70 flex items-center gap-1.5">
+                Huge Pages <HelpCircle className="w-3.5 h-3.5 text-white/40" />
               </span>
-              <div className="flex items-center gap-1 p-0.5 bg-slate-100 dark:bg-white/5 rounded-xl border border-slate-200/50 dark:border-white/5">
+              <div className="flex items-center gap-1 p-0.5 bg-white/5 rounded-xl border border-white/10">
                 {(['always', 'madvise', 'never'] as const).map((hp) => (
                   <button
                     key={hp}
                     onClick={() => setHugePages(hp)}
                     className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
                       hugePages === hp
-                        ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-xs'
-                        : 'text-slate-500 hover:text-slate-800 dark:hover:text-white'
+                        ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-xs'
+                        : 'text-white/50 hover:text-white'
                     }`}
                   >
                     {hp}
@@ -105,40 +105,40 @@ export const AjustesTab: React.FC = () => {
           </div>
 
           {/* REDE */}
-          <div className="bg-white/80 dark:bg-[#121826]/80 rounded-3xl p-5 sm:p-6 border border-slate-200/70 dark:border-white/5 shadow-xs backdrop-blur-md space-y-4">
-            <h3 className="text-xs font-bold font-mono tracking-wider text-slate-700 dark:text-slate-300 uppercase">
-              REDE
+          <div className="glass-card rounded-[30px] p-6 border border-white/10 space-y-4">
+            <h3 className="text-xs font-bold font-mono tracking-wider text-white/70 uppercase">
+              REDE & TCP
             </h3>
 
             <div className="flex items-center justify-between text-xs font-mono">
-              <span className="text-slate-600 dark:text-slate-300 flex items-center gap-1">
-                Controle de congestionamento TCP <HelpCircle className="w-3 h-3 text-slate-400" />
+              <span className="text-white/70 flex items-center gap-1.5">
+                Controle de congestionamento TCP <HelpCircle className="w-3.5 h-3.5 text-white/40" />
               </span>
               <select
                 value={tcpCongestion}
                 onChange={(e) => setTcpCongestion(e.target.value as any)}
                 aria-label="Controle de congestionamento TCP"
-                className="bg-slate-100 dark:bg-white/5 text-slate-800 dark:text-slate-200 px-3 py-1.5 rounded-xl border border-slate-200/60 dark:border-white/10 font-mono text-xs cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="bg-white/10 text-white px-3 py-1.5 rounded-xl border border-white/15 font-mono text-xs cursor-pointer focus:outline-none focus:ring-1 focus:ring-cyan-400"
               >
-                <option value="bbr">bbr</option>
-                <option value="cubic">cubic</option>
-                <option value="reno">reno</option>
+                <option value="bbr" className="bg-[#121622] text-white">bbr</option>
+                <option value="cubic" className="bg-[#121622] text-white">cubic</option>
+                <option value="reno" className="bg-[#121622] text-white">reno</option>
               </select>
             </div>
           </div>
 
           {/* ESCRITA EM DISCO */}
-          <div className="bg-white/80 dark:bg-[#121826]/80 rounded-3xl p-5 sm:p-6 border border-slate-200/70 dark:border-white/5 shadow-xs backdrop-blur-md space-y-4">
-            <h3 className="text-xs font-bold font-mono tracking-wider text-slate-700 dark:text-slate-300 uppercase">
-              ESCRITA EM DISCO
+          <div className="glass-card rounded-[30px] p-6 border border-white/10 space-y-4">
+            <h3 className="text-xs font-bold font-mono tracking-wider text-white/70 uppercase">
+              ESCRITA EM DISCO (DIRTY PAGES)
             </h3>
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs font-mono">
-                <span className="text-slate-600 dark:text-slate-300 flex items-center gap-1">
-                  Início da gravação (bg) <HelpCircle className="w-3 h-3 text-slate-400" />
+                <span className="text-white/70 flex items-center gap-1.5">
+                  Início da gravação (bg) <HelpCircle className="w-3.5 h-3.5 text-white/40" />
                 </span>
-                <span className="font-bold text-blue-600 dark:text-cyan-400">{dirtyBackgroundRatio}</span>
+                <span className="font-bold text-cyan-400">{dirtyBackgroundRatio}</span>
               </div>
               <input
                 type="range"
@@ -147,16 +147,16 @@ export const AjustesTab: React.FC = () => {
                 step="5"
                 value={dirtyBackgroundRatio}
                 onChange={(e) => setDirtyBackgroundRatio(parseInt(e.target.value, 10))}
-                className="w-full accent-blue-600 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg cursor-pointer"
+                className="w-full accent-cyan-400 h-1.5 bg-white/10 rounded-lg cursor-pointer"
               />
             </div>
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs font-mono">
-                <span className="text-slate-600 dark:text-slate-300 flex items-center gap-1">
-                  Limite de gravação <HelpCircle className="w-3 h-3 text-slate-400" />
+                <span className="text-white/70 flex items-center gap-1.5">
+                  Limite de gravação <HelpCircle className="w-3.5 h-3.5 text-white/40" />
                 </span>
-                <span className="font-bold text-blue-600 dark:text-cyan-400">{dirtyRatio}</span>
+                <span className="font-bold text-cyan-400">{dirtyRatio}</span>
               </div>
               <input
                 type="range"
@@ -165,20 +165,20 @@ export const AjustesTab: React.FC = () => {
                 step="5"
                 value={dirtyRatio}
                 onChange={(e) => setDirtyRatio(parseInt(e.target.value, 10))}
-                className="w-full accent-blue-600 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg cursor-pointer"
+                className="w-full accent-cyan-400 h-1.5 bg-white/10 rounded-lg cursor-pointer"
               />
             </div>
           </div>
         </div>
 
         {/* Col 2: SERVIÇOS */}
-        <div className="bg-white/80 dark:bg-[#121826]/80 rounded-3xl p-5 sm:p-6 border border-slate-200/70 dark:border-white/5 shadow-xs backdrop-blur-md space-y-4">
+        <div className="glass-card rounded-[30px] p-6 border border-white/10 space-y-4">
           <div>
-            <h3 className="text-xs font-bold font-mono tracking-wider text-slate-700 dark:text-slate-300 uppercase">
-              SERVIÇOS
+            <h3 className="text-xs font-bold font-mono tracking-wider text-white/70 uppercase">
+              SERVIÇOS SYSTEMD
             </h3>
-            <p className="text-[11px] text-slate-400 font-mono mt-0.5">
-              Liga/desliga serviços do sistema (aplica agora e no boot).
+            <p className="text-[11px] text-white/45 font-mono mt-0.5">
+              Liga/desliga daemons do sistema em tempo real e na inicialização.
             </p>
           </div>
 
@@ -186,25 +186,25 @@ export const AjustesTab: React.FC = () => {
             {services.map((svc) => (
               <div
                 key={svc.name}
-                className="flex items-center justify-between p-3 rounded-2xl bg-slate-50/80 dark:bg-white/5 border border-slate-100 dark:border-white/5 hover:border-slate-200 dark:hover:border-white/10 transition-colors"
+                className="flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.03] border border-white/5 hover:border-white/15 transition-colors"
               >
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono font-bold text-white">
                     {svc.name}
                   </span>
                   <span title={svc.tooltip}>
-                    <HelpCircle className="w-3 h-3 text-slate-400" />
+                    <HelpCircle className="w-3.5 h-3.5 text-white/40" />
                   </span>
                 </div>
 
                 <button
                   onClick={() => toggleService(svc.name)}
-                  className={`w-11 h-6 rounded-full transition-colors relative p-0.5 shadow-2xs ${
-                    svc.enabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-white/15'
+                  className={`w-11 h-6 rounded-full transition-colors relative p-0.5 shadow-sm ${
+                    svc.enabled ? 'bg-emerald-500' : 'bg-white/15'
                   }`}
                 >
                   <div
-                    className={`w-5 h-5 rounded-full bg-white shadow-xs transition-transform ${
+                    className={`w-5 h-5 rounded-full bg-white shadow-md transition-transform ${
                       svc.enabled ? 'translate-x-5' : 'translate-x-0'
                     }`}
                   />
@@ -214,35 +214,35 @@ export const AjustesTab: React.FC = () => {
           </div>
         </div>
 
-        {/* Col 3: AGENDADOR DE I/O (POR DISCO) */}
-        <div className="bg-white/80 dark:bg-[#121826]/80 rounded-3xl p-5 sm:p-6 border border-slate-200/70 dark:border-white/5 shadow-xs backdrop-blur-md space-y-4">
+        {/* Col 3: AGENDADOR DE I/O */}
+        <div className="glass-card rounded-[30px] p-6 border border-white/10 space-y-4">
           <div>
-            <h3 className="text-xs font-bold font-mono tracking-wider text-slate-700 dark:text-slate-300 uppercase">
-              AGENDADOR DE I/O (POR DISCO)
+            <h3 className="text-xs font-bold font-mono tracking-wider text-white/70 uppercase">
+              AGENDADOR DE I/O
             </h3>
-            <p className="text-[11px] text-slate-400 font-mono mt-0.5">
-              Como o kernel ordena as operações de disco. &apos;none&apos; é ideal pra NVMe; &apos;bfq&apos; pra HDD/desktop.
+            <p className="text-[11px] text-white/45 font-mono mt-0.5">
+              Como o kernel ordena E/S. &apos;none&apos; é ideal para NVMe; &apos;bfq&apos; para HDD.
             </p>
           </div>
 
-          <div className="space-y-2 pt-1">
+          <div className="space-y-2.5 pt-1">
             {diskSchedulers.map((d) => {
               const isNvme = d.mediaType === 'NVMe';
               const isSsd = d.mediaType === 'SSD';
               const badgeClass = isNvme
-                ? 'bg-blue-500/15 text-blue-600 dark:text-cyan-400 border border-blue-400/20'
+                ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30'
                 : isSsd
-                ? 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-300 border border-cyan-400/20'
-                : 'bg-orange-500/15 text-orange-600 dark:text-orange-400 border border-orange-400/20';
+                ? 'bg-blue-500/15 text-blue-300 border border-blue-500/30'
+                : 'bg-orange-500/15 text-orange-400 border border-orange-500/30';
 
               return (
                 <div
                   key={d.device}
-                  className="flex items-center justify-between p-2.5 rounded-2xl bg-slate-50/80 dark:bg-white/5 border border-slate-100 dark:border-white/5"
+                  className="flex items-center justify-between p-3 rounded-2xl bg-white/[0.03] border border-white/5"
                 >
-                  <div className="flex items-center gap-1.5 font-mono text-xs">
-                    <span className="font-extrabold text-slate-800 dark:text-slate-200">{d.device}</span>
-                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-md uppercase ${badgeClass}`}>
+                  <div className="flex items-center gap-2 font-mono text-xs">
+                    <span className="font-bold text-white">{d.device}</span>
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase ${badgeClass}`}>
                       {d.mediaType}
                     </span>
                   </div>
@@ -251,12 +251,12 @@ export const AjustesTab: React.FC = () => {
                     value={d.scheduler}
                     onChange={(e) => setDiskScheduler(d.device, e.target.value as any)}
                     aria-label={`Agendador de I/O para ${d.device}`}
-                    className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 px-2.5 py-1 rounded-xl border border-slate-200 dark:border-white/10 font-mono text-xs cursor-pointer focus:outline-none"
+                    className="bg-white/10 text-white px-3 py-1.5 rounded-xl border border-white/15 font-mono text-xs cursor-pointer focus:outline-none"
                   >
-                    <option value="none">none</option>
-                    <option value="bfq">bfq</option>
-                    <option value="mq-deadline">mq-deadline</option>
-                    <option value="kyber">kyber</option>
+                    <option value="none" className="bg-[#121622] text-white">none</option>
+                    <option value="bfq" className="bg-[#121622] text-white">bfq</option>
+                    <option value="mq-deadline" className="bg-[#121622] text-white">mq-deadline</option>
+                    <option value="kyber" className="bg-[#121622] text-white">kyber</option>
                   </select>
                 </div>
               );
