@@ -138,7 +138,7 @@ export type FanMode = 'auto' | 'manual' | 'max' | 'curve';
 export type MediaType = 'NVMe' | 'SSD' | 'HDD' | 'USB';
 
 export interface ProcessItem { pid: number; name: string; ramMb: number; ramPercent: number; color: string }
-export interface NetworkInterface { name: string; downloadKb: number; uploadKb: number; historyDown: number[] }
+export interface NetworkInterface { name: string; downloadKb: number; uploadKb: number; historyDown: number[]; historyUp: number[] }
 export interface CpuThreadData { id: number; usage: number; temp: number | null }
 export interface CpuSocketData {
   id: number;

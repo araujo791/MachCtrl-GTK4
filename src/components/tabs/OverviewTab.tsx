@@ -21,6 +21,40 @@ function splinePath(data: number[], max = 100): { line: string; area: string; la
   return { line: d, area: `${d} L ${last.x} ${H} L 0 ${H} Z`, last };
 }
 
+function NetCard({ net, t }: { net: { name: string; downloadKb: number; uploadKb: number; historyDown: number[]; historyUp: number[] }; t: (s: string) => string }) {
+  const max = Math.max(10, ...net.historyDown, ...net.historyUp) * 1.15;
+  const down = splinePath(net.historyDown, max);
+  const up = splinePath(net.historyUp, max);
+  const gd = `nd-${net.name}`, gu = `nu-${net.name}`;
+  return (
+    <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-2.5">
+      <div className="text-xs font-mono font-bold text-white">{net.name}</div>
+      <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+        <div>
+          <span className="text-[10px] text-white/45 flex items-center gap-1"><ArrowDown className="w-3 h-3 text-cyan-400" /> {t('Download').toUpperCase()}</span>
+          <span className="text-sm font-bold text-cyan-400">{net.downloadKb.toFixed(0)} KB/s</span>
+        </div>
+        <div>
+          <span className="text-[10px] text-white/45 flex items-center gap-1"><ArrowUp className="w-3 h-3 text-emerald-400" /> {t('Upload').toUpperCase()}</span>
+          <span className="text-sm font-bold text-emerald-400">{net.uploadKb.toFixed(0)} KB/s</span>
+        </div>
+      </div>
+      <div className="h-14 relative">
+        <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id={gd} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#22d3ee" stopOpacity="0.30" /><stop offset="100%" stopColor="#22d3ee" stopOpacity="0" /></linearGradient>
+            <linearGradient id={gu} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#34d399" stopOpacity="0.25" /><stop offset="100%" stopColor="#34d399" stopOpacity="0" /></linearGradient>
+          </defs>
+          {down.area && <path d={down.area} fill={`url(#${gd})`} />}
+          {up.area && <path d={up.area} fill={`url(#${gu})`} />}
+          {down.line && <path d={down.line} fill="none" stroke="#22d3ee" strokeWidth="2.5" strokeLinecap="round" vectorEffect="non-scaling-stroke" />}
+          {up.line && <path d={up.line} fill="none" stroke="#34d399" strokeWidth="2.5" strokeLinecap="round" vectorEffect="non-scaling-stroke" />}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 function batteryStatusText(b: BatteryInfo, t: (s: string) => string): string {
   if (b.status === 'charging') return t('Carregando');
   if (b.status === 'full') return t('Carga completa');
@@ -129,15 +163,18 @@ export const OverviewTab: React.FC = () => {
               </span>
             </div>
 
-            <div className="flex items-center justify-between my-4">
-              <div>
+            <div className="flex items-center justify-between gap-4 my-4">
+              <div className="flex-1 min-w-0">
                 <span className="text-xs text-white/50 block">{t('Usado')}</span>
-                <span className="text-2xl font-extrabold text-white font-mono">{snap.mem_used_gb.toFixed(1)} GB</span>
-                <div className="w-24 h-1.5 rounded-full bg-white/10 mt-2 overflow-hidden">
+                <div className="mt-0.5 flex items-baseline gap-2 flex-wrap">
+                  <span className="text-3xl font-extrabold text-white">{snap.mem_used_gb.toFixed(1)} GB</span>
+                  <span className="text-xs text-white/55">{t('em uso')} / {(snap.mem_total_gb - snap.mem_used_gb).toFixed(1)} GB {t('livre')}</span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-white/10 mt-3 overflow-hidden">
                   <div className="h-full bg-gradient-to-r from-amber-500 to-orange-500 rounded-full" style={{ width: `${memPct}%` }} />
                 </div>
               </div>
-              <div className="relative w-24 h-24 flex items-center justify-center">
+              <div className="relative w-24 h-24 shrink-0 flex items-center justify-center">
                 <svg className="w-24 h-24 -rotate-90" viewBox="0 0 100 100">
                   <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(255, 255, 255, 0.08)" strokeWidth="10" />
                   <circle
@@ -147,21 +184,15 @@ export const OverviewTab: React.FC = () => {
                   />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
-                  <span className="text-lg font-bold font-mono">{memPct.toFixed(0)}%</span>
-                  <span className="text-[9px] text-white/50 uppercase">{t('Uso')}</span>
+                  <span className="text-lg font-bold">{memPct.toFixed(0)}%</span>
+                  <span className="text-[10px] text-white/50">{t('usado')}</span>
                 </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 pt-3 border-t border-white/5 text-xs font-mono">
-              <div>
-                <span className="text-[10px] text-white/40">{t('Livre')}:</span>{' '}
-                <strong className="text-white">{(snap.mem_total_gb - snap.mem_used_gb).toFixed(1)} GB</strong>
-              </div>
-              <div>
-                <span className="text-[10px] text-white/40">{t('Total')}:</span>{' '}
-                <strong className="text-white">{snap.mem_total_gb.toFixed(1)} GB</strong>
-              </div>
+            <div className="flex justify-end pt-3 border-t border-white/5 text-xs font-mono">
+              <span className="text-[10px] text-white/40 mr-1.5">{t('Total')}:</span>
+              <strong className="text-white">{snap.mem_total_gb.toFixed(1)} GB</strong>
             </div>
           </div>
 
@@ -252,19 +283,7 @@ export const OverviewTab: React.FC = () => {
           <div className="space-y-3 pt-1">
             {networks.length === 0 && <div className="text-xs font-mono text-white/40">{t('Nenhuma interface de rede ativa')}</div>}
             {[...networks].sort((a, b) => b.downloadKb + b.uploadKb - (a.downloadKb + a.uploadKb)).slice(0, 3).map((net) => (
-              <div key={net.name} className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-2.5">
-                <div className="text-xs font-mono font-bold text-white">{net.name}</div>
-                <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                  <div>
-                    <span className="text-[10px] text-white/45 flex items-center gap-1"><ArrowDown className="w-3 h-3 text-cyan-400" /> {t('Download').toUpperCase()}</span>
-                    <span className="text-sm font-bold text-cyan-400">{net.downloadKb.toFixed(0)} KB/s</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-white/45 flex items-center gap-1"><ArrowUp className="w-3 h-3 text-emerald-400" /> {t('Upload').toUpperCase()}</span>
-                    <span className="text-sm font-bold text-emerald-400">{net.uploadKb.toFixed(0)} KB/s</span>
-                  </div>
-                </div>
-              </div>
+              <NetCard key={net.name} net={net} t={t} />
             ))}
           </div>
         </div>

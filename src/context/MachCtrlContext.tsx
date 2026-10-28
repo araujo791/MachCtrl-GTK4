@@ -17,8 +17,8 @@ export const DEFAULT_CURVE: FanCurvePoint[] = [
 export type PowerMode = 'economia' | 'equilibrado' | 'desempenho';
 const PROFILE_TO_BACKEND: Record<PowerMode, string> = { economia: 'silent', equilibrado: 'balanced', desempenho: 'performance' };
 
-interface Hist { cpu: number[]; sock: Record<number, number[]>; temp: number[]; ram: number[]; net: Record<string, number[]>; rd: Record<string, number[]>; wr: Record<string, number[]> }
-const EMPTY_HIST: Hist = { cpu: [], sock: {}, temp: [], ram: [], net: {}, rd: {}, wr: {} };
+interface Hist { cpu: number[]; sock: Record<number, number[]>; temp: number[]; ram: number[]; net: Record<string, number[]>; up: Record<string, number[]>; rd: Record<string, number[]>; wr: Record<string, number[]> }
+const EMPTY_HIST: Hist = { cpu: [], sock: {}, temp: [], ram: [], net: {}, up: {}, rd: {}, wr: {} };
 
 const push = (arr: number[] | undefined, v: number, n = HISTORY) => [...(arr ?? []), v].slice(-n);
 
@@ -169,11 +169,11 @@ export const MachCtrlProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (!alive) return;
         const cpuT = Math.max(0, ...(s.sockets || []).map((k) => k.package_temp_c || 0), s.cpu_temp_c || 0);
         setHist((h) => {
-          const net = { ...h.net }, rd = { ...h.rd }, wr = { ...h.wr }, sock = { ...h.sock };
+          const net = { ...h.net }, up = { ...h.up }, rd = { ...h.rd }, wr = { ...h.wr }, sock = { ...h.sock };
           s.sockets.forEach((k) => { sock[k.socket_id] = push(sock[k.socket_id], k.usage_pct); });
-          s.net.forEach((n) => { net[n.name] = push(net[n.name], n.down_kb, 30); });
+          s.net.forEach((n) => { net[n.name] = push(net[n.name], n.down_kb, 40); up[n.name] = push(up[n.name], n.up_kb, 40); });
           s.disks.forEach((d) => { rd[d.device] = push(rd[d.device], d.read_mbs, 30); wr[d.device] = push(wr[d.device], d.write_mbs, 30); });
-          return { cpu: push(h.cpu, s.cpu_usage), sock, temp: push(h.temp, cpuT), ram: push(h.ram, s.mem_pct), net, rd, wr };
+          return { cpu: push(h.cpu, s.cpu_usage), sock, temp: push(h.temp, cpuT), ram: push(h.ram, s.mem_pct), net, up, rd, wr };
         });
         setSnap(s);
 
@@ -395,7 +395,7 @@ export const MachCtrlProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }));
   }, [snap]);
   const networks: NetworkInterface[] = useMemo(() =>
-    (snap?.net ?? []).map((n) => ({ name: n.name, downloadKb: n.down_kb, uploadKb: n.up_kb, historyDown: hist.net[n.name] ?? [n.down_kb] })), [snap, hist.net]);
+    (snap?.net ?? []).map((n) => ({ name: n.name, downloadKb: n.down_kb, uploadKb: n.up_kb, historyDown: hist.net[n.name] ?? [n.down_kb], historyUp: hist.up[n.name] ?? [n.up_kb] })), [snap, hist.net, hist.up]);
   const sockets: CpuSocketData[] = useMemo(() =>
     (snap?.sockets ?? []).map((s) => ({
       id: s.socket_id, model: s.model, cores: s.phys_cores, threads: s.threads, freqGhz: s.freq_ghz,
