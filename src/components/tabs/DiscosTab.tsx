@@ -1,6 +1,7 @@
 import React from 'react';
 import { HardDrive, ArrowDown, ArrowUp } from 'lucide-react';
 import { useMachCtrl } from '../../context/MachCtrlContext';
+import { StatPills } from '../StatPills';
 
 export const DiscosTab: React.FC = () => {
   const { disks, t } = useMachCtrl();
@@ -35,13 +36,16 @@ export const DiscosTab: React.FC = () => {
 
   return (
     <div className="space-y-6 page-root animate-in fade-in duration-300">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight text-white">
-          {t('Armazenamento & Discos')}
-        </h2>
-        <p className="text-xs text-white/50 font-mono mt-0.5">
-          {t('Taxa de leitura e escrita em tempo real, capacidade total e sistemas de arquivos (F2FS, BTRFS, EXT4, etc.)')}
-        </p>
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight text-white">
+            {t('Armazenamento & Discos')}
+          </h2>
+          <p className="text-xs text-white/50 font-mono mt-0.5">
+            {t('Taxa de leitura e escrita em tempo real, capacidade total e sistemas de arquivos (F2FS, BTRFS, EXT4, etc.)')}
+          </p>
+        </div>
+        <StatPills />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">

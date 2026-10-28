@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { HelpCircle } from 'lucide-react';
 import { useMachCtrl } from '../../context/MachCtrlContext';
+import { StatPills } from '../StatPills';
 
 const SERVICE_TIPS: Record<string, [string, string]> = {
   'ananicy-cpp': ['Ajusta a prioridade dos programas automaticamente pra deixar o sistema mais fluido.', 'Automatically adjusts program priorities to keep the system smooth.'],
@@ -60,11 +61,14 @@ export const AjustesTab: React.FC = () => {
 
   return (
     <div className="space-y-6 page-root animate-in fade-in duration-300">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight text-white">{t('Ajustes do Sistema (Kernel Tuning)')}</h2>
-        <p className="text-xs text-white/50 font-mono mt-0.5">
-          {t('Otimizações de baixo nível para memória, rede, dirty pages e agendadores de E/S no Linux CachyOS')}
-        </p>
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight text-white">{t('Ajustes do Sistema (Kernel Tuning)')}</h2>
+          <p className="text-xs text-white/50 font-mono mt-0.5">
+            {t('Otimizações de baixo nível para memória, rede, dirty pages e agendadores de E/S no Linux CachyOS')}
+          </p>
+        </div>
+        <StatPills />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">

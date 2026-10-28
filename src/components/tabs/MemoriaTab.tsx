@@ -1,6 +1,7 @@
 import React from 'react';
 import { Layers } from 'lucide-react';
 import { useMachCtrl } from '../../context/MachCtrlContext';
+import { StatPills } from '../StatPills';
 
 export const MemoriaTab: React.FC = () => {
   const { dimms, snap, memSlotsTotal, memSlotsUsed, readMemoryRoot, memLoadingRoot, t } = useMachCtrl();
@@ -10,13 +11,16 @@ export const MemoriaTab: React.FC = () => {
 
   return (
     <div className="space-y-6 page-root animate-in fade-in duration-300">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight text-white">
-          {t('Gestão de Memória RAM')}
-        </h2>
-        <p className="text-xs text-white/50 font-mono mt-0.5">
-          {t('Visualização dos pentes instalados via dmidecode, velocidade MT/s, voltagem e slots disponíveis')}
-        </p>
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight text-white">
+            {t('Gestão de Memória RAM')}
+          </h2>
+          <p className="text-xs text-white/50 font-mono mt-0.5">
+            {t('Visualização dos pentes instalados via dmidecode, velocidade MT/s, voltagem e slots disponíveis')}
+          </p>
+        </div>
+        <StatPills />
       </div>
 
       {/* Top Main Memory Bar Card */}

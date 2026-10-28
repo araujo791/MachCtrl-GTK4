@@ -1,6 +1,7 @@
 import React from 'react';
 import { Trash2, CheckCircle2, RotateCw } from 'lucide-react';
 import { useMachCtrl } from '../../context/MachCtrlContext';
+import { StatPills } from '../StatPills';
 
 function bytesHuman(b: number): string {
   if (b >= 1024 ** 3) return `${(b / 1024 ** 3).toFixed(1)} GB`;
@@ -16,11 +17,14 @@ export const LimpezaTab: React.FC = () => {
 
   return (
     <div className="space-y-6 page-root animate-in fade-in duration-300">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight text-white">{t('Limpeza & Manutenção do Sistema')}</h2>
-        <p className="text-xs text-white/50 font-mono mt-0.5">
-          {t('Manutenção ágil para remover pacotes órfãos, esvaziar cache do Pacman, limpar logs do Journal e lixeira')}
-        </p>
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight text-white">{t('Limpeza & Manutenção do Sistema')}</h2>
+          <p className="text-xs text-white/50 font-mono mt-0.5">
+            {t('Manutenção ágil para remover pacotes órfãos, esvaziar cache do Pacman, limpar logs do Journal e lixeira')}
+          </p>
+        </div>
+        <StatPills />
       </div>
 
       <div className="glass-card rounded-[30px] p-6 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">

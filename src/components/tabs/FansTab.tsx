@@ -1,6 +1,7 @@
 import React from 'react';
 import { Fan, TrendingUp } from 'lucide-react';
 import { useMachCtrl } from '../../context/MachCtrlContext';
+import { StatPills } from '../StatPills';
 import { FanMode } from '../../types/machctrl';
 
 const MODE_LABEL: Record<FanMode, string> = { auto: 'Automático', manual: 'Manual', max: 'Máximo', curve: 'Curva' };
@@ -23,7 +24,7 @@ export const FansTab: React.FC = () => {
             {t('Controle de rotação por hardware e curvas térmicas com animação fluida')}
           </p>
         </div>
-
+        <StatPills />
       </div>
 
       {fansLoaded && fans.length === 0 && (

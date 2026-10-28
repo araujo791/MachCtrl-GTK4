@@ -1,6 +1,7 @@
 import React from 'react';
 import { Battery, Zap } from 'lucide-react';
 import { useMachCtrl } from '../../context/MachCtrlContext';
+import { StatPills } from '../StatPills';
 
 export const EnergiaTab: React.FC = () => {
   const { battery, powerMode, setPowerMode, availableModes, energyError, t } = useMachCtrl();
@@ -22,11 +23,14 @@ export const EnergiaTab: React.FC = () => {
 
   return (
     <div className="space-y-6 page-root animate-in fade-in duration-300">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight text-white">{t('Perfis de Energia & Bateria')}</h2>
-        <p className="text-xs text-white/50 font-mono mt-0.5">
-          {t('Ajuste simplificado para os modos de Desempenho, Equilibrado e Economia de Bateria com detalhamento de saúde')}
-        </p>
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight text-white">{t('Perfis de Energia & Bateria')}</h2>
+          <p className="text-xs text-white/50 font-mono mt-0.5">
+            {t('Ajuste simplificado para os modos de Desempenho, Equilibrado e Economia de Bateria com detalhamento de saúde')}
+          </p>
+        </div>
+        <StatPills />
       </div>
 
       {battery && (

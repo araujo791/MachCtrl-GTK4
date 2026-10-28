@@ -1,19 +1,23 @@
 import React from 'react';
 import { Cpu } from 'lucide-react';
 import { useMachCtrl } from '../../context/MachCtrlContext';
+import { StatPills } from '../StatPills';
 
 export const CpuTab: React.FC = () => {
   const { sockets, t } = useMachCtrl();
 
   return (
     <div className="space-y-6 page-root animate-in fade-in duration-300">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight text-white">
-          {t('Monitoramento de CPU Avançado')}
-        </h2>
-        <p className="text-xs text-white/50 font-mono mt-0.5">
-          {t('Acompanhamento individual de atividade, temperatura e frequência de cada thread e núcleo físico')}
-        </p>
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight text-white">
+            {t('Monitoramento de CPU Avançado')}
+          </h2>
+          <p className="text-xs text-white/50 font-mono mt-0.5">
+            {t('Acompanhamento individual de atividade, temperatura e frequência de cada thread e núcleo físico')}
+          </p>
+        </div>
+        <StatPills />
       </div>
 
       {sockets.length === 0 && <div className="text-sm font-mono text-white/50">{t('Aguardando leitura…')}</div>}
