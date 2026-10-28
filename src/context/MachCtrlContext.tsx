@@ -372,9 +372,17 @@ export const MachCtrlProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     invoke(cmd, args).catch(() => {}).finally(() => setTimeout(loadTune, 150));
   }, [loadTune]);
 
-  const [wallpaper, setWallpaper] = useState<string | null>(null);
-  const loadWallpaper = useCallback(() => { invoke<string | null>('get_wallpaper_blur').then((w) => setWallpaper(w ?? null)).catch(() => {}); }, []);
-  useEffect(loadWallpaper, [loadWallpaper]);
+  const [wallpaper, setWallpaper] = useState<string | null>(() => {
+    try { return localStorage.getItem('machctrl.wp'); } catch { return null; }
+  });
+  const loadWallpaper = useCallback(() => {
+    invoke<string | null>('get_wallpaper_blur').then((w) => {
+      setWallpaper(w ?? null);
+      try { w ? localStorage.setItem('machctrl.wp', w) : localStorage.removeItem('machctrl.wp'); } catch { /* ignore */ }
+    }).catch(() => {});
+  }, []);
+  // adiado: deixa a primeira pintura e os sensores saírem antes de decodificar a imagem
+  useEffect(() => { const id = window.setTimeout(loadWallpaper, 600); return () => window.clearTimeout(id); }, [loadWallpaper]);
 
   const refresh = useCallback(() => { loadWallpaper(); loadSysInfo(); loadMem(); loadFans(); loadProfiles(); loadTune(); }, [loadSysInfo, loadMem, loadFans, loadProfiles, loadTune]);
 

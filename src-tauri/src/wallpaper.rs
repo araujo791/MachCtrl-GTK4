@@ -102,11 +102,42 @@ pub fn blurred_wallpaper() -> Option<String> {
     blurred_from(&user_home()?)
 }
 
+fn cache_file() -> PathBuf {
+    // root (sudo) grava aqui; independe do HOME e não suja a pasta do usuário
+    PathBuf::from("/var/tmp/machctrl-wallpaper.cache")
+}
+
+/// Chave que muda quando o arquivo do wallpaper muda (caminho + tamanho + mtime).
+fn cache_key(path: &Path) -> String {
+    let m = std::fs::metadata(path).ok();
+    let len = m.as_ref().map(|m| m.len()).unwrap_or(0);
+    let mt = m
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    format!("{}|{}|{}", path.display(), len, mt)
+}
+
 fn blurred_from(home: &Path) -> Option<String> {
     let path = plasma_wallpaper(home)?;
-    let img = image::open(&path).ok()?;
+    let key = cache_key(&path);
+    if let Ok(c) = std::fs::read_to_string(cache_file()) {
+        if let Some((k, url)) = c.split_once('\n') {
+            if k == key && url.starts_with("data:image/") {
+                return Some(url.to_string());
+            }
+        }
+    }
+    let url = render_blur(&path)?;
+    let _ = std::fs::write(cache_file(), format!("{}\n{}", key, url));
+    Some(url)
+}
+
+fn render_blur(path: &Path) -> Option<String> {
+    let img = image::open(path).ok()?;
     // 480px de largura já basta: será esticado pelo CSS e o desfoque esconde a perda
-    let small = img.resize(480, 270, image::imageops::FilterType::Triangle);
+    let small = img.thumbnail(480, 270);
     let blurred = image::imageops::blur(&small.to_rgb8(), 5.0);
     let mut buf = Vec::new();
     let enc = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 78);

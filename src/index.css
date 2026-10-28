@@ -56,7 +56,9 @@
 }
 
 .glass-card {
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.055));
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.04)),
+    rgba(20, 24, 34, 0.50);
   backdrop-filter: blur(40px) saturate(140%);
   -webkit-backdrop-filter: blur(24px) saturate(140%);
   border: 1px solid rgba(255, 255, 255, 0.10);
@@ -68,7 +70,7 @@
 }
 
 .glass-dock {
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(24, 28, 38, 0.55);
   backdrop-filter: blur(26px) saturate(140%);
   -webkit-backdrop-filter: blur(26px) saturate(140%);
   border: 1px solid rgba(255, 255, 255, 0.13);
@@ -115,7 +117,7 @@
   padding: 8px 14px 12px;
   margin: 0 -8px 18px;
   border-radius: 24px;
-  background: linear-gradient(180deg, rgba(12, 14, 19, 0.88) 78%, rgba(10, 12, 16, 0));
+  background: linear-gradient(180deg, rgba(26, 30, 42, 0.74) 78%, rgba(26, 30, 42, 0));
   backdrop-filter: blur(22px);
   -webkit-backdrop-filter: blur(22px);
 }
