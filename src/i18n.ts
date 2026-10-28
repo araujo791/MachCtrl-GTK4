@@ -15,7 +15,7 @@ export const EN: Record<string, string> = {
   // overview
   'Meu Dashboard': 'My Dashboard', 'CPU Global': 'Global CPU', 'Memória RAM': 'RAM', 'Temperatura': 'Temperature',
   'Normal': 'Normal', 'Morno': 'Warm', 'Quente': 'Hot', 'Fans PWM': 'Fans PWM', 'Uso da CPU': 'CPU usage',
-  'Núcleos': 'Cores', 'Threads': 'Threads', 'Frequência': 'Frequency', 'Uso': 'Usage', 'Livre': 'Free', 'Usado': 'Used',
+  'Processadores': 'Processors', 'Núcleos': 'Cores', 'Threads': 'Threads', 'Frequência': 'Frequency', 'Uso': 'Usage', 'Livre': 'Free', 'Usado': 'Used',
   'Total': 'Total', 'Bateria': 'Battery', 'Carregando': 'Charging', 'Descarregando': 'Discharging',
   'Carga completa': 'Fully charged', 'Na tomada': 'Plugged in', 'Saúde': 'Health', 'Tensão': 'Voltage',
   'Top processos (RAM)': 'Top processes (RAM)', 'Rede': 'Network', 'Download': 'Download', 'Upload': 'Upload',

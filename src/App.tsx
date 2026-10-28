@@ -16,13 +16,14 @@ import { SobreTab } from './components/tabs/SobreTab';
 import { CurveModal } from './components/CurveModal';
 
 const MainShell: React.FC = () => {
-  const { activeTab, isMaximized, theme } = useMachCtrl();
+  const { activeTab, isMaximized, theme, wallpaper } = useMachCtrl();
 
   return (
     <div className={`${theme === 'light' ? 'light' : 'dark'} h-screen w-screen`}>
       {/* A janela do Tauri é transparente: este contêiner pinta o fundo e arredonda os cantos (sem raio quando maximizada). */}
       <div
-        className={`relative h-full w-full overflow-hidden flex flex-col font-sans select-none antialiased ambient-bg text-slate-100 ${
+        style={wallpaper ? ({ '--wp': `url("${wallpaper}")` } as React.CSSProperties) : undefined}
+        className={`relative h-full w-full overflow-hidden flex flex-col font-sans select-none antialiased ambient-bg text-slate-100 ${wallpaper ? 'wp' : ''} ${
           isMaximized ? '' : 'rounded-[14px] border border-white/12'
         }`}
       >

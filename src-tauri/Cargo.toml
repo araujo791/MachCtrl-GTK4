@@ -28,6 +28,8 @@ glob = "0.3"
 # Tauri). Sintoma sem isso: "this method takes 2 arguments but 1 was supplied"
 # ao compilar `cookie`.
 time = ">=0.3.36, <0.3.42"
+# Wallpaper desfocado de fundo (só decoders/encoders necessários)
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 
 [profile.release]
 opt-level = "s"

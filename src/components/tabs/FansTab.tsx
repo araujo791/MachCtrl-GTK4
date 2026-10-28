@@ -1,5 +1,5 @@
 import React from 'react';
-import { Fan, TrendingUp, Sliders } from 'lucide-react';
+import { Fan, TrendingUp } from 'lucide-react';
 import { useMachCtrl } from '../../context/MachCtrlContext';
 import { FanMode } from '../../types/machctrl';
 
@@ -24,14 +24,6 @@ export const FansTab: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => openCurveEditor()}
-          disabled={!fans.some((f) => f.controllable)}
-          className="px-4 py-2 rounded-2xl text-xs font-bold bg-white/10 disabled:opacity-40 hover:bg-white/15 text-white border border-white/15 flex items-center gap-2 shadow-lg backdrop-blur-xl transition-all active:scale-95 self-start sm:self-auto"
-        >
-          <TrendingUp className="w-4 h-4 text-purple-400" />
-          <span>{t('Editor de Curvas Térmicas')}</span>
-        </button>
       </div>
 
       {fansLoaded && fans.length === 0 && (

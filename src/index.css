@@ -78,7 +78,7 @@
 /* Fundo ambiente translúcido: a janela do Tauri é transparente, então o wallpaper do desktop aparece
    por trás (quanto menor --veil, mais visível). Luzes quentes em gradiente (sem filter:blur, barato por CPU). */
 .ambient-bg {
-  --veil: 0.93;
+  --veil: 0.62;
   background:
     radial-gradient(circle 70px at 63% 9%, rgba(255, 214, 160, 0.20), transparent 72%),
     radial-gradient(circle 46px at 74% 17%, rgba(255, 190, 120, 0.16), transparent 72%),
@@ -94,6 +94,18 @@
 /* Sem barrinha de rolagem no dock lateral */
 .glass-dock { scrollbar-width: none; }
 .glass-dock::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+/* Com wallpaper do desktop (desfocado no Rust): ele é o fundo; só um leve véu para legibilidade */
+.ambient-bg.wp {
+  background:
+    linear-gradient(rgba(12, 14, 19, 0.22), rgba(12, 14, 19, 0.30)),
+    var(--wp) center / cover no-repeat;
+}
+.light .ambient-bg.wp {
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.30)),
+    var(--wp) center / cover no-repeat;
+}
 
 /* Cabeçalho da página fixo: não rola junto com o conteúdo */
 .page-root > :first-child {
@@ -111,7 +123,7 @@
 
 /* ================= TEMA CLARO ================= */
 .light .ambient-bg {
-  --veil: 0.92;
+  --veil: 0.55;
   background:
     radial-gradient(ellipse 34% 30% at 50% 4%, rgba(255, 190, 110, 0.35), transparent 72%),
     radial-gradient(ellipse 24% 28% at 4% 34%, rgba(255, 170, 70, 0.22), transparent 72%),
@@ -157,7 +169,7 @@
 /* Elementos sobre cor sólida mantêm texto branco */
 .light .text-white[class*="bg-gradient"], .light .text-white[class*="from-"], .light .keep-white,
 .light .keep-white-all, .light .keep-white-all * { color: #fff; }
-.light .keep-white-all .keep-ink, .light .keep-ink { color: #0f172a; }
+.light .keep-white-all .keep-ink, .light .keep-white-all .keep-ink *, .light .keep-ink, .light .keep-ink * { color: #0f172a; }
 .light .keep-white-all { }
 
 /* Controles */

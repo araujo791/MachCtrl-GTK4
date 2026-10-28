@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod battery;
+mod wallpaper;
 mod cleaner;
 mod fancontrol;
 mod gpu;
@@ -990,6 +991,12 @@ fn set_service(name: String, enable: bool) -> Result<(), String> {
     tune::set_service(&name, enable)
 }
 
+/// Wallpaper do desktop, miniaturizado e desfocado (data URL), ou None se não achar.
+#[tauri::command]
+async fn get_wallpaper_blur() -> Option<String> {
+    tauri::async_runtime::spawn_blocking(wallpaper::blurred_wallpaper).await.ok().flatten()
+}
+
 fn main() {
     #[cfg(target_os = "linux")]
     if std::env::var_os("WEBKIT_SKIA_ENABLE_CPU_RENDERING").is_none() {
@@ -1011,6 +1018,7 @@ fn main() {
         .manage(fan_ctrl)
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
+            get_wallpaper_blur,
             get_system_info,
             get_memory_slots,
             get_memory_slots_root,

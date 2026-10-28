@@ -54,6 +54,7 @@ interface Ctx {
   setActiveTab: (tab: string) => void;
   isMaximized: boolean;
 
+  wallpaper: string | null;
   ready: boolean;
   snap: Snapshot | null;
   sysInfo: SystemInfo | null;
@@ -370,7 +371,11 @@ export const MachCtrlProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     invoke(cmd, args).catch(() => {}).finally(() => setTimeout(loadTune, 150));
   }, [loadTune]);
 
-  const refresh = useCallback(() => { loadSysInfo(); loadMem(); loadFans(); loadProfiles(); loadTune(); }, [loadSysInfo, loadMem, loadFans, loadProfiles, loadTune]);
+  const [wallpaper, setWallpaper] = useState<string | null>(null);
+  const loadWallpaper = useCallback(() => { invoke<string | null>('get_wallpaper_blur').then((w) => setWallpaper(w ?? null)).catch(() => {}); }, []);
+  useEffect(loadWallpaper, [loadWallpaper]);
+
+  const refresh = useCallback(() => { loadWallpaper(); loadSysInfo(); loadMem(); loadFans(); loadProfiles(); loadTune(); }, [loadSysInfo, loadMem, loadFans, loadProfiles, loadTune]);
 
   // ---- derivados ----
   const battery = snap?.battery ?? null;
@@ -408,7 +413,7 @@ export const MachCtrlProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const value: Ctx = {
     lang, setLang, theme, setTheme, t, activeTab, setActiveTab, isMaximized,
-    ready: !!snap, snap, sysInfo, refresh, hist, tempAlert, dismissTempAlert,
+    wallpaper, ready: !!snap, snap, sysInfo, refresh, hist, tempAlert, dismissTempAlert,
     isLaptop: !!battery, battery, topProcesses, networks, sockets, dimms,
     memSlotsTotal: mem?.total_slots ?? 0, memSlotsUsed: mem?.occupied_slots ?? 0, readMemoryRoot, memLoadingRoot, disks,
     fans, fansLoaded: fanList !== null, setFanMode, setFanManualPct, maxConfirmFan, confirmMax, cancelMax,

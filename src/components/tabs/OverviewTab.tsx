@@ -293,6 +293,40 @@ export const OverviewTab: React.FC = () => {
         </div>
       </div>
 
+      {/* Processadores disponíveis */}
+      <div className="glass-card rounded-[30px] p-6 border border-white/10 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">{t('Processadores')}</h3>
+          <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] text-white/70 font-mono">
+            {sockets.length} · {cores} {t('núcleos')} / {threads} {t('threads')}
+          </span>
+        </div>
+        <div className={`grid gap-4 ${sockets.length > 1 ? 'md:grid-cols-2' : ''}`}>
+          {sockets.map((s) => (
+            <div key={s.id} className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500/20 to-cyan-400/20 text-cyan-400 border border-cyan-400/30 flex flex-col items-center justify-center font-mono font-bold leading-none">
+                  <span className="text-[8px] text-white/60">CPU</span>
+                  <span className="text-sm">{s.id}</span>
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-white truncate" title={s.model}>{s.model}</div>
+                  <div className="text-[11px] font-mono text-white/50">{s.cores} {t('núcleos')} · {s.threads} {t('threads')} · {s.freqGhz.toFixed(2)} GHz</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 text-xs font-mono">
+                <span className="w-10 text-white/45">{t('Uso')}</span>
+                <div className="flex-1 bg-white/10 rounded-full h-2 overflow-hidden">
+                  <div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-500" style={{ width: `${Math.max(2, s.usageAvg)}%` }} />
+                </div>
+                <span className="w-10 text-right font-bold text-cyan-400">{s.usageAvg}%</span>
+                <span className="w-14 text-right font-bold text-emerald-400">{s.tempAvg != null ? `${s.tempAvg.toFixed(0)}°C` : '—'}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-stretch">
         <div className="lg:col-span-2 glass-card rounded-[30px] p-6 border border-white/10 flex flex-col gap-4">
           <div className="flex items-center justify-between">
