@@ -1,397 +1,423 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { Lang, detectLang, makeT } from '../i18n';
 import {
-  CleanupTask,
-  CpuSocketData,
-  CpuThreadData,
-  DimmModule,
-  DiskPartition,
-  DiskScheduler,
-  FanDevice,
-  NetworkInterface,
-  ProcessItem,
-  SystemService,
+  CleanResultDto, CleanTaskDto, CleanupTask, CpuSocketData, DimmModule, DiskPartition, FanCurvePoint, FanDevice,
+  FanDto, FanMode, FanModeDto, MediaType, MemoryDto, NetworkInterface, ProcessItem, ProfilesDto, Snapshot,
+  SystemInfo, TuneState, BatteryInfo,
 } from '../types/machctrl';
 
-export interface FanCurvePoint {
-  temp: number;
-  speed: number;
+const HISTORY = 60;
+const PROC_COLORS = ['#3b82f6', '#06b6d4', '#10b981', '#f97316', '#8b5cf6', '#ec4899'];
+export const DEFAULT_CURVE: FanCurvePoint[] = [
+  { temp: 30, pct: 30 }, { temp: 50, pct: 40 }, { temp: 65, pct: 60 }, { temp: 75, pct: 80 }, { temp: 85, pct: 100 },
+];
+
+export type PowerMode = 'economia' | 'equilibrado' | 'desempenho';
+const PROFILE_TO_BACKEND: Record<PowerMode, string> = { economia: 'silent', equilibrado: 'balanced', desempenho: 'performance' };
+
+interface Hist { cpu: number[]; temp: number[]; ram: number[]; net: Record<string, number[]>; rd: Record<string, number[]>; wr: Record<string, number[]> }
+const EMPTY_HIST: Hist = { cpu: [], temp: [], ram: [], net: {}, rd: {}, wr: {} };
+
+const push = (arr: number[] | undefined, v: number, n = HISTORY) => [...(arr ?? []), v].slice(-n);
+
+export function diskLabel(mountpoint: string): string {
+  if (!mountpoint) return '—';
+  if (mountpoint === '/') return '/';
+  for (const root of ['/run/media/', '/media/', '/mnt/']) {
+    if (mountpoint.startsWith(root)) return mountpoint.split('/').filter(Boolean).pop() || mountpoint;
+  }
+  return mountpoint;
 }
 
-interface MachCtrlContextType {
-  isLaptop: boolean;
+function mediaType(t: string): MediaType {
+  const k = (t || '').toLowerCase();
+  return k === 'nvme' ? 'NVMe' : k === 'ssd' ? 'SSD' : k === 'usb' ? 'USB' : 'HDD';
+}
+
+function fanRole(chip: string, label: string): FanDevice['type'] {
+  const c = (chip || '').toLowerCase();
+  const l = (label || '').toLowerCase();
+  if (c.includes('amdgpu') || c.includes('nvidia') || c.includes('nouveau') || c.includes('radeon') || l.includes('gpu')) return 'GPU';
+  if (c.includes('k10temp') || c.includes('coretemp') || c.startsWith('nct') || c.startsWith('it87') || c.startsWith('f71') || c.includes('cpu') || l.includes('cpu')) return 'CPU';
+  return 'Sistema';
+}
+
+interface Ctx {
+  lang: Lang;
+  setLang: (l: Lang) => void;
+  theme: 'dark' | 'light';
+  setTheme: (th: 'dark' | 'light') => void;
+  t: (s: string) => string;
   activeTab: string;
   setActiveTab: (tab: string) => void;
-  theme: 'light' | 'dark';
-  setTheme: (theme: 'light' | 'dark') => void;
-  lang: 'BR' | 'EN';
-  setLang: (lang: 'BR' | 'EN') => void;
-  isCurveEditorOpen: boolean;
-  setIsCurveEditorOpen: (open: boolean) => void;
+  isMaximized: boolean;
 
-  // Telemetry
+  ready: boolean;
+  snap: Snapshot | null;
+  sysInfo: SystemInfo | null;
+  refresh: () => void;
+  hist: Hist;
+  tempAlert: { kind: 'cpu' | 'gpu'; temp: number } | null;
+  dismissTempAlert: () => void;
+
+  isLaptop: boolean;
+  battery: BatteryInfo | null;
   topProcesses: ProcessItem[];
   networks: NetworkInterface[];
   sockets: CpuSocketData[];
   dimms: DimmModule[];
+  memSlotsTotal: number;
+  memSlotsUsed: number;
+  readMemoryRoot: () => void;
+  memLoadingRoot: boolean;
   disks: DiskPartition[];
+
   fans: FanDevice[];
-  updateFanMode: (fanId: string, mode: FanDevice['mode']) => void;
-  updateFanPwm: (fanId: string, pwm: number) => void;
-  fanCurve: FanCurvePoint[];
-  updateFanCurvePoint: (idx: number, speed: number) => void;
+  fansLoaded: boolean;
+  setFanMode: (id: string, mode: FanMode) => void;
+  setFanManualPct: (id: string, pct: number) => void;
+  maxConfirmFan: FanDevice | null;
+  confirmMax: () => void;
+  cancelMax: () => void;
+  curveFanId: string | null;
+  openCurveEditor: (fanId?: string) => void;
+  closeCurveEditor: () => void;
+  curvePoints: FanCurvePoint[];
+  setCurvePoint: (idx: number, patch: Partial<FanCurvePoint>) => void;
+  applyCurve: () => void;
 
-  // Energy
-  powerMode: 'economia' | 'equilibrado' | 'desempenho';
-  setPowerMode: (mode: 'economia' | 'equilibrado' | 'desempenho') => void;
-  battery: {
-    present: boolean;
-    percent: number;
-    healthPercent: number;
-    voltage: number;
-    currentWh: number;
-    totalWh: number;
-    isPlugged: boolean;
-    stateText: string;
-    tech: string;
-    model: string;
-  };
+  powerMode: PowerMode | null;
+  availableModes: PowerMode[];
+  setPowerMode: (m: PowerMode) => void;
+  energyError: string | null;
 
-  // Cleanup
   cleanupTasks: CleanupTask[];
   runCleanupTask: (id: string) => void;
   runAllCleanup: () => void;
   isCleaningAll: boolean;
+  totalFreedBytes: number;
 
-  // Adjustments
-  swappiness: number;
-  setSwappiness: (val: number) => void;
-  vfsCachePressure: number;
-  setVfsCachePressure: (val: number) => void;
-  hugePages: 'always' | 'madvise' | 'never';
-  setHugePages: (val: 'always' | 'madvise' | 'never') => void;
-  tcpCongestion: 'bbr' | 'cubic' | 'reno';
-  setTcpCongestion: (val: 'bbr' | 'cubic' | 'reno') => void;
-  dirtyBackgroundRatio: number;
-  setDirtyBackgroundRatio: (val: number) => void;
-  dirtyRatio: number;
-  setDirtyRatio: (val: number) => void;
-  services: SystemService[];
-  toggleService: (name: string) => void;
-  diskSchedulers: DiskScheduler[];
-  setDiskScheduler: (device: string, scheduler: DiskScheduler['scheduler']) => void;
+  tune: TuneState | null;
+  applyTune: (cmd: string, args: Record<string, unknown>) => void;
 }
 
-const MachCtrlContext = createContext<MachCtrlContextType | null>(null);
-
-const DEFAULT_PROCESSES: ProcessItem[] = [
-  { name: 'Telegram', ramMb: 1420, ramPercent: 18.2, color: '#3b82f6' },
-  { name: 'msedge', ramMb: 1180, ramPercent: 15.1, color: '#06b6d4' },
-  { name: 'msedge', ramMb: 980, ramPercent: 12.6, color: '#10b981' },
-  { name: 'vivaldi', ramMb: 680, ramPercent: 8.7, color: '#f97316' },
-  { name: 'plasmashell', ramMb: 620, ramPercent: 8.0, color: '#8b5cf6' },
-  { name: 'vivaldi', ramMb: 580, ramPercent: 7.4, color: '#ec4899' },
-];
-
-const DEFAULT_NETWORKS: NetworkInterface[] = [
-  { name: 'enp5s0', downloadKb: 81, uploadKb: 5, historyDown: [12, 45, 67, 81, 74, 95, 81] },
-  { name: 'enp6s0', downloadKb: 0, uploadKb: 0, historyDown: [0, 0, 0, 0, 0, 0, 0] },
-];
-
-function generateThreads(count: number, baseTemp: number): CpuThreadData[] {
-  return Array.from({ length: count }, (_, i) => ({
-    id: i,
-    usage: Math.floor(Math.random() * 15),
-    temp: baseTemp + Math.floor(Math.random() * 4 - 2),
-  }));
-}
+const MachCtrlContext = createContext<Ctx | null>(null);
 
 export const MachCtrlProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Automatic Chassis / Hardware Detection (laptops have BAT0/BAT1 ACPI controllers)
-  const [isLaptop] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<string>('overview');
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
-  const [lang, setLang] = useState<'BR' | 'EN'>('BR');
-  const [isCurveEditorOpen, setIsCurveEditorOpen] = useState(false);
-  const [powerMode, setPowerMode] = useState<'economia' | 'equilibrado' | 'desempenho'>('desempenho');
-  const [isCleaningAll, setIsCleaningAll] = useState(false);
+  const [lang, setLangState] = useState<Lang>(detectLang());
+  const [theme, setThemeState] = useState<'dark' | 'light'>('dark');
+  const langRef = useRef<Lang>(lang);
+  const themeRef = useRef<'dark' | 'light'>('dark');
+  const [activeTab, setActiveTab] = useState('overview');
+  const [isMaximized, setIsMaximized] = useState(false);
+  const [snap, setSnap] = useState<Snapshot | null>(null);
+  const [sysInfo, setSysInfo] = useState<SystemInfo | null>(null);
+  const [hist, setHist] = useState<Hist>(EMPTY_HIST);
+  const [tempAlert, setTempAlert] = useState<Ctx['tempAlert']>(null);
+  const alertDismissedAt = useRef(0);
+  const prefsLoaded = useRef(false);
+  const prefsRaw = useRef<Record<string, unknown>>({});
 
-  // Top Processes
-  const [topProcesses] = useState<ProcessItem[]>(DEFAULT_PROCESSES);
+  const t = useMemo(() => makeT(lang), [lang]);
 
-  // Networks
-  const [networks, setNetworks] = useState<NetworkInterface[]>(DEFAULT_NETWORKS);
-
-  // Sockets & Threads
-  const [sockets] = useState<CpuSocketData[]>([
-    {
-      id: 0,
-      model: 'Intel(R) Core(R) i7 / Xeon CPU E5-2680 v4 @ 2.40GHz',
-      cores: 14,
-      threads: 28,
-      freqGhz: 2.90,
-      usageAvg: 9,
-      tempAvg: 48,
-      threadList: generateThreads(28, 48),
-    },
-    {
-      id: 1,
-      model: 'Intel(R) Core(R) i7 / Xeon CPU E5-2680 v4 @ 2.40GHz',
-      cores: 14,
-      threads: 28,
-      freqGhz: 2.79,
-      usageAvg: 3,
-      tempAvg: 51,
-      threadList: generateThreads(28, 51),
-    },
-  ]);
-
-  // DIMM Memory Modules
-  const [dimms] = useState<DimmModule[]>([
-    { slot: 'DIMM_A1', sizeGb: 16, type: 'DDR4', manufacturer: 'Micron', model: '36ASF2G72PZ-2G1A2', speedMts: 2133, voltageVolts: 1.20, isEmpty: false },
-    { slot: 'DIMM_C1', sizeGb: 16, type: 'DDR4', manufacturer: 'Micron', model: '36ASF2G72PZ-2G1A2', speedMts: 2133, voltageVolts: 1.20, isEmpty: false },
-    { slot: 'DIMM_E1', sizeGb: 16, type: 'DDR4', manufacturer: 'Micron', model: '36ASF2G72PZ-2G1A2', speedMts: 2133, voltageVolts: 1.20, isEmpty: false },
-    { slot: 'DIMM_G1', sizeGb: 16, type: 'DDR4', manufacturer: 'Micron', model: '36ASF2G72PZ-2G1A2', speedMts: 2133, voltageVolts: 1.20, isEmpty: false },
-    { slot: 'Slot vazio 1', sizeGb: 0, type: '', manufacturer: '', model: '', speedMts: 0, voltageVolts: 0, isEmpty: true },
-    { slot: 'Slot vazio 2', sizeGb: 0, type: '', manufacturer: '', model: '', speedMts: 0, voltageVolts: 0, isEmpty: true },
-    { slot: 'Slot vazio 3', sizeGb: 0, type: '', manufacturer: '', model: '', speedMts: 0, voltageVolts: 0, isEmpty: true },
-    { slot: 'Slot vazio 4', sizeGb: 0, type: '', manufacturer: '', model: '', speedMts: 0, voltageVolts: 0, isEmpty: true },
-  ]);
-
-  // Disks Partitions
-  const [disks] = useState<DiskPartition[]>([
-    { id: 'd1', name: '/', mountPoint: '/', device: 'nvme0n1p1', fsType: 'f2fs', mediaType: 'NVMe', usedGb: 54.3, totalGb: 953.4, usagePercent: 5.7, readMb: 0.2, writeMb: 0.0, readHistory: [0.1, 0.2, 0.4, 0.2, 0.1, 0.3, 0.2], writeHistory: [0, 0, 0, 0, 0, 0, 0] },
-    { id: 'd2', name: '/boot/efi', mountPoint: '/boot/efi', device: 'nvme0n1p2', fsType: 'vfat', mediaType: 'NVMe', usedGb: 0.02, totalGb: 0.5, usagePercent: 4.6, readMb: 0.2, writeMb: 0.0, readHistory: [0.1, 0.2, 0.2, 0.1, 0.2, 0.2, 0.2], writeHistory: [0, 0, 0, 0, 0, 0, 0] },
-    { id: 'd3', name: 'Port_Roms', mountPoint: '/mnt/Port_Roms', device: 'sde1', fsType: 'exfat', mediaType: 'HDD', usedGb: 51.4, totalGb: 465.7, usagePercent: 11.0, readMb: 0.0, writeMb: 0.0, readHistory: [0, 0, 0, 0, 0, 0, 0], writeHistory: [0, 0, 0, 0, 0, 0, 0] },
-    { id: 'd4', name: 'Documentos', mountPoint: '/mnt/Documentos', device: 'sda1', fsType: 'exfat', mediaType: 'HDD', usedGb: 1043.3, totalGb: 3725.9, usagePercent: 28.0, readMb: 0.0, writeMb: 0.0, readHistory: [0, 0, 0, 0, 0, 0, 0], writeHistory: [0, 0, 0, 0, 0, 0, 0] },
-    { id: 'd5', name: 'JogoCachy', mountPoint: '/mnt/JogoCachy', device: 'sdg1', fsType: 'btrfs', mediaType: 'HDD', usedGb: 3.3, totalGb: 1863.0, usagePercent: 0.2, readMb: 0.0, writeMb: 0.0, readHistory: [0, 0, 0, 0, 0, 0, 0], writeHistory: [0, 0, 0, 0, 0, 0, 0] },
-    { id: 'd6', name: 'Distros', mountPoint: '/mnt/Distros', device: 'sdc1', fsType: 'exfat', mediaType: 'HDD', usedGb: 175.3, totalGb: 465.7, usagePercent: 37.6, readMb: 0.0, writeMb: 0.0, readHistory: [0, 0, 0, 0, 0, 0, 0], writeHistory: [0, 0, 0, 0, 0, 0, 0] },
-    { id: 'd7', name: 'Android', mountPoint: '/mnt/Android', device: 'sdb1', fsType: 'ntfs3', mediaType: 'SSD', usedGb: 159.0, totalGb: 931.5, usagePercent: 17.1, readMb: 0.0, writeMb: 0.0, readHistory: [0, 0, 0, 0, 0, 0, 0], writeHistory: [0, 0, 0, 0, 0, 0, 0] },
-    { id: 'd8', name: 'Navegadores', mountPoint: '/mnt/Navegadores', device: 'sdd1', fsType: 'exfat', mediaType: 'SSD', usedGb: 66.7, totalGb: 446.7, usagePercent: 14.9, readMb: 0.0, writeMb: 0.0, readHistory: [0, 0, 0, 0, 0, 0, 0], writeHistory: [0, 0, 0, 0, 0, 0, 0] },
-    { id: 'd9', name: 'Covenant', mountPoint: '/mnt/Covenant', device: 'sdf1', fsType: 'ntfs3', mediaType: 'HDD', usedGb: 831.5, totalGb: 1863.0, usagePercent: 44.6, readMb: 0.0, writeMb: 0.0, readHistory: [0, 0, 0, 0, 0, 0, 0], writeHistory: [0, 0, 0, 0, 0, 0, 0] },
-    { id: 'd10', name: 'Instaladores', mountPoint: '/mnt/Instaladores', device: 'sdh1', fsType: 'ntfs3', mediaType: 'HDD', usedGb: 185.2, totalGb: 931.5, usagePercent: 19.9, readMb: 0.0, writeMb: 0.0, readHistory: [0, 0, 0, 0, 0, 0, 0], writeHistory: [0, 0, 0, 0, 0, 0, 0] },
-    { id: 'd11', name: 'Programas', mountPoint: '/mnt/Programas', device: 'sdi1', fsType: 'ntfs3', mediaType: 'HDD', usedGb: 402.5, totalGb: 931.5, usagePercent: 43.2, readMb: 0.0, writeMb: 0.0, readHistory: [0, 0, 0, 0, 0, 0, 0], writeHistory: [0, 0, 0, 0, 0, 0, 0] },
-  ]);
-
-  // Fans Devices
-  const [fans, setFans] = useState<FanDevice[]>([
-    { id: 'fan-gpu', name: 'GPU', type: 'GPU', targetDevice: 'NVIDIA RTX / Intel Xe', mode: 'Curva', rpm: 1103, maxRpm: 3200, pwmPercent: 38, color: '#8b5cf6', hasCurveSupport: true },
-    { id: 'fan-cpu-1', name: 'CPU 1', type: 'CPU', targetDevice: 'CPU Socket 0 Primary', mode: 'Automático', rpm: 1804, maxRpm: 2600, pwmPercent: 70, color: '#f97316' },
-    { id: 'fan-cpu-2', name: 'CPU 2', type: 'CPU', targetDevice: 'CPU Socket 0 Auxiliary', mode: 'Automático', rpm: 1816, maxRpm: 2600, pwmPercent: 75, color: '#f97316' },
-    { id: 'fan-cpu-3', name: 'CPU 3', type: 'CPU', targetDevice: 'CPU Socket 1 Primary', mode: 'Automático', rpm: 0, maxRpm: 2600, pwmPercent: 50, color: '#f97316' },
-    { id: 'fan-cpu-4', name: 'CPU 4', type: 'CPU', targetDevice: 'CPU Socket 1 Auxiliary', mode: 'Automático', rpm: 0, maxRpm: 2600, pwmPercent: 100, color: '#f97316' },
-    { id: 'fan-cpu-5', name: 'CPU 5', type: 'CPU', targetDevice: 'Chassis VRM Exhaust', mode: 'Automático', rpm: 0, maxRpm: 2400, pwmPercent: 100, color: '#f97316' },
-  ]);
-
-  const [fanCurve, setFanCurve] = useState<FanCurvePoint[]>([
-    { temp: 35, speed: 30 },
-    { temp: 50, speed: 45 },
-    { temp: 65, speed: 65 },
-    { temp: 80, speed: 85 },
-    { temp: 90, speed: 100 },
-  ]);
-
-  const updateFanMode = (fanId: string, mode: FanDevice['mode']) => {
-    setFans((prev) =>
-      prev.map((f) => {
-        if (f.id !== fanId) return f;
-        let newPwm = f.pwmPercent;
-        let newRpm = f.rpm;
-        if (mode === 'Máximo') {
-          newPwm = 100;
-          newRpm = f.maxRpm;
-        } else if (mode === 'Manual') {
-          newPwm = 50;
-          newRpm = Math.round(f.maxRpm * 0.5);
-        } else if (mode === 'Automático') {
-          newPwm = 65;
-          newRpm = Math.round(f.maxRpm * 0.65);
-        }
-        return { ...f, mode, pwmPercent: newPwm, rpm: newRpm };
-      })
-    );
-  };
-
-  const updateFanPwm = (fanId: string, pwm: number) => {
-    setFans((prev) =>
-      prev.map((f) => {
-        if (f.id !== fanId) return f;
-        const newRpm = Math.round((f.maxRpm * pwm) / 100);
-        return { ...f, pwmPercent: pwm, rpm: newRpm };
-      })
-    );
-  };
-
-  const updateFanCurvePoint = (idx: number, speed: number) => {
-    setFanCurve((prev) => {
-      const copy = [...prev];
-      if (copy[idx]) copy[idx] = { ...copy[idx], speed };
-      return copy;
-    });
-  };
-
-  // Battery
-  const [battery] = useState({
-    present: true,
-    percent: 100,
-    healthPercent: 60,
-    voltage: 16.59,
-    currentWh: 24.8,
-    totalWh: 41.4,
-    isPlugged: true,
-    stateText: 'Carga completa',
-    tech: 'Li-ion',
-    model: 'SIMPLO · DELL VN3N047E794',
-  });
-
-  // Cleanup Tasks
-  const [cleanupTasks, setCleanupTasks] = useState<CleanupTask[]>([
-    { id: 'pacman', title: 'Cache do Pacman', isRoot: true, description: 'Remove pacotes antigos (/var/cache/pacman/pkg)', sizeMb: 1420, cleaned: false },
-    { id: 'orphans', title: 'Pacotes Órfãos', isRoot: true, description: 'Remove pacotes sem dependentes instalados', sizeMb: 480, cleaned: false },
-    { id: 'journal', title: 'Logs do Journal', isRoot: true, description: 'Limpa logs do systemd (mantém últimos 7 dias)', sizeMb: 720, cleaned: false },
-    { id: 'tmp', title: 'Arquivos Temporários', isRoot: true, description: 'Remove arquivos antigos de /tmp e /var/tmp', sizeMb: 350, cleaned: false },
-    { id: 'thumbs', title: 'Cache de Miniaturas', isRoot: false, description: 'Limpa thumbnails (~/.cache/thumbnails)', sizeMb: 210, cleaned: false },
-    { id: 'coredumps', title: 'Core Dumps', isRoot: true, description: 'Remove arquivos de crash do sistema', sizeMb: 85, cleaned: false },
-    { id: 'trash', title: 'Lixeira', isRoot: false, description: 'Esvazia a lixeira do usuário (~/.local/share/Trash)', sizeMb: 180, cleaned: false },
-    { id: 'flatpak', title: 'Flatpak não usados', isRoot: false, description: 'Remove runtimes Flatpak desnecessários (flatpak uninstall --unused)', sizeMb: 940, cleaned: false },
-  ]);
-
-  const runCleanupTask = (id: string) => {
-    setCleanupTasks((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, cleaned: true, sizeMb: 0 } : t))
-    );
-  };
-
-  const runAllCleanup = () => {
-    setIsCleaningAll(true);
-    setTimeout(() => {
-      setCleanupTasks((prev) => prev.map((t) => ({ ...t, cleaned: true, sizeMb: 0 })));
-      setIsCleaningAll(false);
-    }, 1000);
-  };
-
-  // Adjustments (Tuning)
-  const [swappiness, setSwappiness] = useState(10);
-  const [vfsCachePressure, setVfsCachePressure] = useState(50);
-  const [hugePages, setHugePages] = useState<'always' | 'madvise' | 'never'>('always');
-  const [tcpCongestion, setTcpCongestion] = useState<'bbr' | 'cubic' | 'reno'>('bbr');
-  const [dirtyBackgroundRatio, setDirtyBackgroundRatio] = useState(10);
-  const [dirtyRatio, setDirtyRatio] = useState(20);
-
-  const [services, setServices] = useState<SystemService[]>([
-    { name: 'ananicy-cpp', enabled: true, tooltip: 'Otimizador de auto-nice e prioridades de I/O em C++' },
-    { name: 'irqbalance', enabled: false, tooltip: 'Distribui interrupções de hardware entre núcleos' },
-    { name: 'bluetooth', enabled: false, tooltip: 'Pilha bluetooth do sistema (economiza bateria se desligado)' },
-    { name: 'cups', enabled: true, tooltip: 'Serviço de impressão do sistema' },
-    { name: 'fstrim.timer', enabled: true, tooltip: 'Trim semanal para SSDs e unidades NVMe' },
-  ]);
-
-  const toggleService = (name: string) => {
-    setServices((prev) =>
-      prev.map((s) => (s.name === name ? { ...s, enabled: !s.enabled } : s))
-    );
-  };
-
-  const [diskSchedulers, setDiskSchedulers] = useState<DiskScheduler[]>([
-    { device: 'nvme0n1', mediaType: 'NVMe', scheduler: 'none' },
-    { device: 'nvme1n1', mediaType: 'NVMe', scheduler: 'none' },
-    { device: 'sda', mediaType: 'HDD', scheduler: 'bfq' },
-    { device: 'sdb', mediaType: 'SSD', scheduler: 'mq-deadline' },
-    { device: 'sdc', mediaType: 'HDD', scheduler: 'bfq' },
-    { device: 'sdd', mediaType: 'SSD', scheduler: 'mq-deadline' },
-    { device: 'sde', mediaType: 'HDD', scheduler: 'bfq' },
-    { device: 'sdf', mediaType: 'HDD', scheduler: 'bfq' },
-    { device: 'sdg', mediaType: 'HDD', scheduler: 'bfq' },
-    { device: 'sdh', mediaType: 'HDD', scheduler: 'bfq' },
-    { device: 'sdi', mediaType: 'HDD', scheduler: 'bfq' },
-  ]);
-
-  const setDiskScheduler = (device: string, scheduler: DiskScheduler['scheduler']) => {
-    setDiskSchedulers((prev) =>
-      prev.map((d) => (d.device === device ? { ...d, scheduler } : d))
-    );
-  };
-
-  // Telemetry loop for live subtle jitter
+  // ---- janela ----
   useEffect(() => {
-    const timer = setInterval(() => {
-      // Jitter networks
-      setNetworks((prev) =>
-        prev.map((net) => {
-          if (net.downloadKb === 0) return net;
-          const newDown = Math.max(10, Math.min(180, net.downloadKb + Math.floor(Math.random() * 20 - 10)));
-          const newUp = Math.max(1, Math.min(30, net.uploadKb + Math.floor(Math.random() * 4 - 2)));
-          return {
-            ...net,
-            downloadKb: newDown,
-            uploadKb: newUp,
-            historyDown: [...net.historyDown.slice(1), newDown],
-          };
-        })
-      );
-
-      // Jitter active fans
-      setFans((prev) =>
-        prev.map((fan) => {
-          if (fan.rpm === 0) return fan;
-          const jitter = Math.floor(Math.random() * 20 - 10);
-          return { ...fan, rpm: Math.max(100, fan.rpm + jitter) };
-        })
-      );
-    }, 2000);
-
-    return () => clearInterval(timer);
+    try {
+      const win = getCurrentWindow();
+      win.isMaximized().then(setIsMaximized).catch(() => {});
+      const un = win.onResized(async () => {
+        try { setIsMaximized(await win.isMaximized()); } catch { /* ignora */ }
+      });
+      return () => { un.then((f) => f()).catch(() => {}); };
+    } catch { /* fora do Tauri */ }
   }, []);
 
-  return (
-    <MachCtrlContext.Provider
-      value={{
-        isLaptop,
-        activeTab,
-        setActiveTab,
-        theme,
-        setTheme,
-        lang,
-        setLang,
-        isCurveEditorOpen,
-        setIsCurveEditorOpen,
-        topProcesses,
-        networks,
-        sockets,
-        dimms,
-        disks,
-        fans,
-        updateFanMode,
-        updateFanPwm,
-        fanCurve,
-        updateFanCurvePoint,
-        powerMode,
-        setPowerMode,
-        battery,
-        cleanupTasks,
-        runCleanupTask,
-        runAllCleanup,
-        isCleaningAll,
-        swappiness,
-        setSwappiness,
-        vfsCachePressure,
-        setVfsCachePressure,
-        hugePages,
-        setHugePages,
-        tcpCongestion,
-        setTcpCongestion,
-        dirtyBackgroundRatio,
-        setDirtyBackgroundRatio,
-        dirtyRatio,
-        setDirtyRatio,
-        services,
-        toggleService,
-        diskSchedulers,
-        setDiskScheduler,
-      }}
-    >
-      {children}
-    </MachCtrlContext.Provider>
-  );
+  // ---- preferências (idioma) ----
+  useEffect(() => {
+    invoke<string>('load_ui_prefs').then((raw) => {
+      try {
+        const p = JSON.parse(raw || '{}');
+        prefsRaw.current = p;
+        if (p.lang === 'pt-BR' || p.lang === 'en') { setLangState(p.lang); langRef.current = p.lang; }
+        if (typeof p.dark === 'boolean') { const th = p.dark ? 'dark' : 'light'; setThemeState(th); themeRef.current = th; }
+      } catch { /* padrões */ }
+      prefsLoaded.current = true;
+    }).catch(() => { prefsLoaded.current = true; });
+  }, []);
+  const savePrefs = useCallback(() => {
+    if (!prefsLoaded.current) return;
+    invoke('save_ui_prefs', {
+      prefs: JSON.stringify({ ...prefsRaw.current, dark: themeRef.current === 'dark', lang: langRef.current }),
+    }).catch(() => {});
+  }, []);
+  const setLang = useCallback((l: Lang) => { setLangState(l); langRef.current = l; savePrefs(); }, [savePrefs]);
+  const setTheme = useCallback((th: 'dark' | 'light') => { setThemeState(th); themeRef.current = th; savePrefs(); }, [savePrefs]);
+
+  // ---- sysinfo / refresh ----
+  const loadSysInfo = useCallback(() => { invoke<SystemInfo>('get_system_info').then(setSysInfo).catch(() => {}); }, []);
+  useEffect(loadSysInfo, [loadSysInfo]);
+
+  // ---- snapshot a cada 1s ----
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      try {
+        const s = await invoke<Snapshot>('get_snapshot');
+        if (!alive) return;
+        const cpuT = Math.max(0, ...(s.sockets || []).map((k) => k.package_temp_c || 0), s.cpu_temp_c || 0);
+        setHist((h) => {
+          const net = { ...h.net }, rd = { ...h.rd }, wr = { ...h.wr };
+          s.net.forEach((n) => { net[n.name] = push(net[n.name], n.down_kb, 30); });
+          s.disks.forEach((d) => { rd[d.device] = push(rd[d.device], d.read_mbs, 30); wr[d.device] = push(wr[d.device], d.write_mbs, 30); });
+          return { cpu: push(h.cpu, s.cpu_usage), temp: push(h.temp, cpuT), ram: push(h.ram, s.mem_pct), net, rd, wr };
+        });
+        setSnap(s);
+
+        // alerta >= 90°C, com 60 s de intervalo após ser dispensado
+        const gpuT = s.gpus?.[0]?.temp_c || 0;
+        if (Date.now() - alertDismissedAt.current > 60000) {
+          if (cpuT >= 90) setTempAlert({ kind: 'cpu', temp: cpuT });
+          else if (gpuT >= 90) setTempAlert({ kind: 'gpu', temp: gpuT });
+        }
+      } catch { /* backend ainda subindo */ }
+    };
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => { alive = false; clearInterval(iv); };
+  }, []);
+  const dismissTempAlert = useCallback(() => { setTempAlert(null); alertDismissedAt.current = Date.now(); }, []);
+
+  // ---- memória (slots) ----
+  const [mem, setMem] = useState<MemoryDto | null>(null);
+  const [memLoadingRoot, setMemLoadingRoot] = useState(false);
+  const loadMem = useCallback(() => {
+    invoke<MemoryDto>('get_memory_slots').then(setMem).catch(() => setMem({ slots: [], total_slots: 0, occupied_slots: 0 }));
+  }, []);
+  useEffect(loadMem, [loadMem]);
+  const readMemoryRoot = useCallback(() => {
+    setMemLoadingRoot(true);
+    invoke<MemoryDto>('get_memory_slots_root').then(setMem).catch(() => {}).finally(() => setMemLoadingRoot(false));
+  }, []);
+
+  // ---- fans ----
+  const [fanList, setFanList] = useState<FanDto[] | null>(null);
+  const [fanModes, setFanModes] = useState<Record<string, FanMode>>({});
+  const [manualPct, setManualPct] = useState<Record<string, number>>({});
+  const [savedCurves, setSavedCurves] = useState<Record<string, FanCurvePoint[]>>({});
+  const loadFans = useCallback(() => {
+    invoke<FanDto[]>('get_fans')
+      .then((l) => setFanList((l || []).slice().sort((a, b) => a.id.localeCompare(b.id))))
+      .catch(() => setFanList([]));
+  }, []);
+  useEffect(() => { loadFans(); const iv = setInterval(loadFans, 2000); return () => clearInterval(iv); }, [loadFans]);
+  useEffect(() => {
+    invoke<FanModeDto[]>('get_fan_modes').then((list) => {
+      const m: Record<string, FanMode> = {}, mp: Record<string, number> = {}, cv: Record<string, FanCurvePoint[]> = {};
+      (list || []).forEach((f) => {
+        m[f.fan_id] = f.mode;
+        mp[f.fan_id] = f.manual_pct;
+        if (f.curve?.length) cv[f.fan_id] = f.curve.map((p) => ({ temp: p.temp, pct: p.pct }));
+      });
+      setFanModes(m);
+      setManualPct((prev) => ({ ...mp, ...prev }));
+      setSavedCurves(cv);
+    }).catch(() => {});
+  }, []);
+
+  const fans: FanDevice[] = useMemo(() => {
+    const list = fanList ?? [];
+    const roles = list.map((f) => fanRole(f.chip, f.label));
+    const total: Record<string, number> = {};
+    roles.forEach((r) => { total[r] = (total[r] || 0) + 1; });
+    const seen: Record<string, number> = {};
+    return list.map((f, i) => {
+      const r = roles[i];
+      seen[r] = (seen[r] || 0) + 1;
+      return {
+        id: f.id,
+        name: total[r] > 1 ? `${r} ${seen[r]}` : r,
+        type: r,
+        chip: f.chip,
+        controllable: f.controllable,
+        pwmPath: f.pwm_path,
+        pwmEnablePath: f.pwm_enable_path,
+        mode: fanModes[f.id] ?? 'auto',
+        rpm: f.rpm,
+        pwmPercent: (fanModes[f.id] === 'manual' && manualPct[f.id] != null) ? manualPct[f.id] : f.pct,
+      };
+    });
+  }, [fanList, fanModes, manualPct]);
+
+  const fanBase = (f: FanDevice) => ({ fanId: f.id, pwmPath: f.pwmPath, pwmEnablePath: f.pwmEnablePath, chip: f.chip });
+  const [maxConfirmFan, setMaxConfirmFan] = useState<FanDevice | null>(null);
+
+  const applyFanMode = useCallback((f: FanDevice, mode: FanMode) => {
+    setFanModes((m) => ({ ...m, [f.id]: mode }));
+    if (mode === 'auto') {
+      if (f.pwmEnablePath) invoke('set_fan_auto', { ...fanBase(f), pwmEnablePath: f.pwmEnablePath }).catch(() => {});
+    } else if (mode === 'max') {
+      invoke('set_fan', { ...fanBase(f), speed: 100, max: true }).catch(() => {});
+    } else if (mode === 'manual') {
+      invoke('set_fan', { ...fanBase(f), speed: manualPct[f.id] ?? f.pwmPercent, max: false }).catch(() => {});
+    }
+  }, [manualPct]);
+
+  const [curveFanId, setCurveFanId] = useState<string | null>(null);
+  const [curvePoints, setCurvePoints] = useState<FanCurvePoint[]>(DEFAULT_CURVE);
+
+  const setFanMode = useCallback((id: string, mode: FanMode) => {
+    const f = fans.find((x) => x.id === id);
+    if (!f || !f.controllable) return;
+    if (mode === 'max') { setMaxConfirmFan(f); return; }
+    if (mode === 'curve') {
+      setCurveFanId(id);
+      setCurvePoints(savedCurves[id] ?? DEFAULT_CURVE);
+      return;
+    }
+    applyFanMode(f, mode);
+  }, [fans, applyFanMode, savedCurves]);
+
+  const manualTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const setFanManualPct = useCallback((id: string, pct: number) => {
+    setManualPct((m) => ({ ...m, [id]: pct }));
+    const f = fans.find((x) => x.id === id);
+    if (!f) return;
+    if (manualTimer.current) clearTimeout(manualTimer.current);
+    manualTimer.current = setTimeout(() => {
+      invoke('set_fan', { ...fanBase(f), speed: pct, max: false }).catch(() => {});
+    }, 200);
+  }, [fans]);
+
+  const confirmMax = useCallback(() => { if (maxConfirmFan) applyFanMode(maxConfirmFan, 'max'); setMaxConfirmFan(null); }, [maxConfirmFan, applyFanMode]);
+  const cancelMax = useCallback(() => setMaxConfirmFan(null), []);
+
+  const openCurveEditor = useCallback((fanId?: string) => {
+    const f = fanId ? fans.find((x) => x.id === fanId) : fans.find((x) => x.controllable);
+    if (!f) return;
+    setCurveFanId(f.id);
+    setCurvePoints(savedCurves[f.id] ?? DEFAULT_CURVE);
+  }, [fans, savedCurves]);
+  const closeCurveEditor = useCallback(() => setCurveFanId(null), []);
+  const setCurvePoint = useCallback((idx: number, patch: Partial<FanCurvePoint>) => {
+    setCurvePoints((pts) => pts.map((p, i) => (i === idx ? { ...p, ...patch } : p)));
+  }, []);
+  const applyCurve = useCallback(() => {
+    const f = fans.find((x) => x.id === curveFanId);
+    if (f) {
+      const pts = [...curvePoints].sort((a, b) => a.temp - b.temp);
+      invoke('set_fan_curve', { ...fanBase(f), points: pts }).catch(() => {});
+      setFanModes((m) => ({ ...m, [f.id]: 'curve' }));
+      setSavedCurves((c) => ({ ...c, [f.id]: pts }));
+    }
+    setCurveFanId(null);
+  }, [fans, curveFanId, curvePoints]);
+
+  // ---- energia ----
+  const [profiles, setProfiles] = useState<ProfilesDto | null>(null);
+  const [energyError, setEnergyError] = useState<string | null>(null);
+  const loadProfiles = useCallback(() => { invoke<ProfilesDto>('get_profiles').then(setProfiles).catch(() => setProfiles(null)); }, []);
+  useEffect(loadProfiles, [loadProfiles]);
+  const backendToMode = (b: string): PowerMode | null =>
+    (Object.keys(PROFILE_TO_BACKEND) as PowerMode[]).find((k) => PROFILE_TO_BACKEND[k] === b) ?? null;
+  const powerMode = profiles ? backendToMode(profiles.current) : null;
+  const availableModes = (profiles?.available ?? []).map(backendToMode).filter((x): x is PowerMode => !!x);
+  const setPowerMode = useCallback((m: PowerMode) => {
+    setEnergyError(null);
+    invoke('apply_profile', { name: PROFILE_TO_BACKEND[m] })
+      .catch((e) => setEnergyError(String(e)))
+      .finally(loadProfiles);
+  }, [loadProfiles]);
+
+  // ---- limpeza ----
+  const [cleanupTasks, setCleanupTasks] = useState<CleanupTask[]>([]);
+  const [isCleaningAll, setIsCleaningAll] = useState(false);
+  const [totalFreedBytes, setTotalFreedBytes] = useState(0);
+  useEffect(() => {
+    invoke<CleanTaskDto[]>('get_clean_tasks').then((l) =>
+      setCleanupTasks((l || []).map((x) => ({
+        id: x.id, title: x.label, description: x.description, isRoot: x.needs_root, status: 'idle', resultText: '', bytes: 0,
+      })))).catch(() => setCleanupTasks([]));
+  }, []);
+  const patchTask = (id: string, p: Partial<CleanupTask>) =>
+    setCleanupTasks((l) => l.map((x) => (x.id === id ? { ...x, ...p } : x)));
+  const runOne = useCallback(async (id: string): Promise<number> => {
+    patchTask(id, { status: 'running', resultText: '' });
+    try {
+      const r = await invoke<CleanResultDto>('run_clean', { taskId: id });
+      patchTask(id, { status: r.ok ? 'done' : 'failed', resultText: `${r.result}${r.cleaned ? ' (' + r.cleaned + ')' : ''}`, bytes: r.bytes || 0 });
+      return r.bytes || 0;
+    } catch {
+      patchTask(id, { status: 'failed', resultText: '' });
+      return 0;
+    }
+  }, []);
+  const runCleanupTask = useCallback((id: string) => { runOne(id).then((b) => setTotalFreedBytes((x) => x + b)); }, [runOne]);
+  const runAllCleanup = useCallback(async () => {
+    setIsCleaningAll(true);
+    let total = 0;
+    for (const task of cleanupTasks) total += await runOne(task.id);
+    setTotalFreedBytes(total);
+    setIsCleaningAll(false);
+  }, [cleanupTasks, runOne]);
+
+  // ---- ajustes ----
+  const [tune, setTune] = useState<TuneState | null>(null);
+  const loadTune = useCallback(() => { invoke<TuneState>('get_tune_state').then(setTune).catch(() => setTune(null)); }, []);
+  useEffect(loadTune, [loadTune]);
+  const applyTune = useCallback((cmd: string, args: Record<string, unknown>) => {
+    invoke(cmd, args).catch(() => {}).finally(() => setTimeout(loadTune, 150));
+  }, [loadTune]);
+
+  const refresh = useCallback(() => { loadSysInfo(); loadMem(); loadFans(); loadProfiles(); loadTune(); }, [loadSysInfo, loadMem, loadFans, loadProfiles, loadTune]);
+
+  // ---- derivados ----
+  const battery = snap?.battery ?? null;
+  const topProcesses: ProcessItem[] = useMemo(() => {
+    const total = (snap?.mem_total_gb ?? 0) * 1024;
+    return (snap?.top_procs ?? []).slice(0, 6).map((p, i) => ({
+      pid: p.pid, name: p.name, ramMb: p.rss_mb, ramPercent: total > 0 ? (p.rss_mb / total) * 100 : 0, color: PROC_COLORS[i % PROC_COLORS.length],
+    }));
+  }, [snap]);
+  const networks: NetworkInterface[] = useMemo(() =>
+    (snap?.net ?? []).map((n) => ({ name: n.name, downloadKb: n.down_kb, uploadKb: n.up_kb, historyDown: hist.net[n.name] ?? [n.down_kb] })), [snap, hist.net]);
+  const sockets: CpuSocketData[] = useMemo(() =>
+    (snap?.sockets ?? []).map((s) => ({
+      id: s.socket_id, model: s.model, cores: s.phys_cores, threads: s.threads, freqGhz: s.freq_ghz,
+      usageAvg: Math.round(s.usage_pct), tempAvg: s.package_temp_c,
+      threadList: s.cores.map((c) => ({ id: c.id, usage: Math.round(c.pct), temp: c.temp_c ?? s.package_temp_c })),
+    })), [snap]);
+  const dimms: DimmModule[] = useMemo(() => {
+    const slots = mem?.slots ?? [];
+    const out: DimmModule[] = slots.map((s) => ({
+      slot: s.locator, sizeGb: s.size_gb, type: s.mem_type, manufacturer: s.manufacturer, model: s.part_number,
+      speedMts: s.speed_mhz, voltageVolts: s.voltage, isEmpty: false,
+    }));
+    const empty = Math.max(0, (mem?.total_slots ?? 0) - slots.length);
+    for (let i = 0; i < empty; i++) out.push({ slot: `#${slots.length + i + 1}`, sizeGb: 0, type: '', manufacturer: '', model: '', speedMts: 0, voltageVolts: 0, isEmpty: true });
+    return out;
+  }, [mem]);
+  const disks: DiskPartition[] = useMemo(() =>
+    (snap?.disks ?? []).map((d) => ({
+      id: `${d.device}:${d.mountpoint}`, name: diskLabel(d.mountpoint), mountPoint: d.mountpoint, device: d.device, fsType: d.fstype,
+      mediaType: mediaType(d.disk_type), usedGb: d.used_gb, totalGb: d.total_gb, usagePercent: d.usage_pct,
+      readMb: d.read_mbs, writeMb: d.write_mbs,
+      readHistory: hist.rd[d.device] ?? [d.read_mbs], writeHistory: hist.wr[d.device] ?? [d.write_mbs],
+    })), [snap, hist.rd, hist.wr]);
+
+  const value: Ctx = {
+    lang, setLang, theme, setTheme, t, activeTab, setActiveTab, isMaximized,
+    ready: !!snap, snap, sysInfo, refresh, hist, tempAlert, dismissTempAlert,
+    isLaptop: !!battery, battery, topProcesses, networks, sockets, dimms,
+    memSlotsTotal: mem?.total_slots ?? 0, memSlotsUsed: mem?.occupied_slots ?? 0, readMemoryRoot, memLoadingRoot, disks,
+    fans, fansLoaded: fanList !== null, setFanMode, setFanManualPct, maxConfirmFan, confirmMax, cancelMax,
+    curveFanId, openCurveEditor, closeCurveEditor, curvePoints, setCurvePoint, applyCurve,
+    powerMode, availableModes, setPowerMode, energyError,
+    cleanupTasks, runCleanupTask, runAllCleanup, isCleaningAll, totalFreedBytes,
+    tune, applyTune,
+  };
+  return <MachCtrlContext.Provider value={value}>{children}</MachCtrlContext.Provider>;
 };
 
 export const useMachCtrl = () => {

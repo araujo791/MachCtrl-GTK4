@@ -3,19 +3,20 @@ import { Cpu } from 'lucide-react';
 import { useMachCtrl } from '../../context/MachCtrlContext';
 
 export const CpuTab: React.FC = () => {
-  const { sockets } = useMachCtrl();
+  const { sockets, t } = useMachCtrl();
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto animate-in fade-in duration-300">
+    <div className="space-y-6 page-root animate-in fade-in duration-300">
       <div>
         <h2 className="text-2xl font-bold tracking-tight text-white">
-          Monitoramento de CPU Avançado
+          {t('Monitoramento de CPU Avançado')}
         </h2>
         <p className="text-xs text-white/50 font-mono mt-0.5">
-          Acompanhamento individual de atividade, temperatura e frequência de cada thread e núcleo físico
+          {t('Acompanhamento individual de atividade, temperatura e frequência de cada thread e núcleo físico')}
         </p>
       </div>
 
+      {sockets.length === 0 && <div className="text-sm font-mono text-white/50">{t('Aguardando leitura…')}</div>}
       <div className="space-y-6">
         {sockets.map((socket) => (
           <div
@@ -34,7 +35,7 @@ export const CpuTab: React.FC = () => {
                     {socket.model}
                   </h3>
                   <p className="text-xs text-white/50 font-mono">
-                    {socket.cores} núcleos · {socket.threads} threads · {socket.freqGhz.toFixed(2)} GHz
+                    {socket.cores} {t('núcleos')} · {socket.threads} {t('threads')} · {socket.freqGhz.toFixed(2)} GHz
                   </p>
                 </div>
               </div>
@@ -42,7 +43,7 @@ export const CpuTab: React.FC = () => {
               <div className="flex items-center gap-6 font-mono text-xs">
                 <div>
                   <span className="text-[10px] text-white/40 uppercase tracking-wider block">
-                    USO MÉDIO
+                    {t('USO MÉDIO')}
                   </span>
                   <span className="text-base font-bold text-cyan-400">
                     {socket.usageAvg}%
@@ -50,15 +51,15 @@ export const CpuTab: React.FC = () => {
                 </div>
                 <div>
                   <span className="text-[10px] text-white/40 uppercase tracking-wider block">
-                    TEMPERATURA
+                    {t('TEMPERATURA')}
                   </span>
                   <span className="text-base font-bold text-emerald-400">
-                    {socket.tempAvg}°C
+                    {socket.tempAvg != null ? `${socket.tempAvg.toFixed(0)}°C` : '—'}
                   </span>
                 </div>
                 <div>
                   <span className="text-[10px] text-white/40 uppercase tracking-wider block">
-                    FREQ
+                    {t('FREQ')}
                   </span>
                   <span className="text-base font-bold text-white">
                     {socket.freqGhz.toFixed(2)} GHz
@@ -67,30 +68,25 @@ export const CpuTab: React.FC = () => {
               </div>
             </div>
 
-            {/* Thread Grid (T0, T1, ... T27) */}
-            <div className="grid grid-cols-4 sm:grid-cols-7 lg:grid-cols-14 gap-2">
+            {/* Grade de threads: barra de atividade vertical (sobe de baixo para cima) */}
+            <div className="grid grid-cols-4 sm:grid-cols-7 xl:grid-cols-14 gap-2.5">
               {socket.threadList.map((thread) => (
                 <div
                   key={thread.id}
-                  className="bg-white/[0.03] p-2.5 rounded-2xl border border-white/5 flex flex-col justify-between h-16 relative overflow-hidden group hover:border-cyan-400/40 hover:bg-white/[0.06] transition-all shadow-sm"
+                  className="bg-white/[0.04] rounded-2xl border border-white/[0.07] flex items-stretch h-[76px] overflow-hidden group hover:border-cyan-400/40 hover:bg-white/[0.07] transition-all shadow-sm"
+                  title={`T${thread.id} · ${thread.usage}% · ${thread.temp != null ? thread.temp.toFixed(0) : '—'}°C`}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold font-mono text-cyan-400">
-                      {thread.usage}%
-                    </span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-xs shadow-emerald-400/50" title={`Temp: ${thread.temp}°C`} />
+                  <div className="flex-1 min-w-0 p-2.5 flex flex-col justify-between">
+                    <span className="text-sm font-bold font-mono text-cyan-400 leading-none">{thread.usage}%</span>
+                    <div className="space-y-0.5 font-mono leading-none">
+                      <div className="text-[10px] text-white/45">T{thread.id}</div>
+                      <div className="text-[10px] text-emerald-400/80">{thread.temp != null ? `${thread.temp.toFixed(0)}°C` : '—'}</div>
+                    </div>
                   </div>
-
-                  <div className="flex items-center justify-between text-[10px] font-mono text-white/40">
-                    <span>T{thread.id}</span>
-                    <span className="text-[9px] text-white/30">{thread.temp}°C</span>
-                  </div>
-
-                  {/* Activity Bar along the bottom */}
-                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/10">
+                  <div className="w-2 m-1.5 ml-0 rounded-full bg-white/10 relative overflow-hidden">
                     <div
-                      className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-500"
-                      style={{ width: `${Math.max(8, thread.usage)}%` }}
+                      className="absolute bottom-0 left-0 right-0 rounded-full bg-gradient-to-t from-blue-500 to-cyan-300 transition-all duration-500"
+                      style={{ height: `${Math.max(6, thread.usage)}%` }}
                     />
                   </div>
                 </div>
@@ -101,11 +97,11 @@ export const CpuTab: React.FC = () => {
             <div className="flex items-center gap-4 text-[11px] font-mono text-white/50 pt-3 border-t border-white/10">
               <span className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2 rounded-xs bg-gradient-to-r from-cyan-400 to-blue-500 inline-block" />
-                <span>Atividade (%)</span>
+                <span>{t('Atividade (%)')}</span>
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
-                <span>Temperatura (°C)</span>
+                <span>{t('Temperatura (°C)')}</span>
               </span>
             </div>
           </div>

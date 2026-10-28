@@ -1,7 +1,18 @@
 import React from 'react';
-import { Heart, ExternalLink, ShieldCheck, Sparkles } from 'lucide-react';
+import { Heart, ExternalLink } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
+import { useMachCtrl } from '../../context/MachCtrlContext';
+
+const PAYPAL_URL = `https://www.paypal.com/donate/?business=${encodeURIComponent('anderson.henrique.araujo@hotmail.com')}&currency_code=BRL`;
 
 export const SobreTab: React.FC = () => {
+  const { sysInfo, t } = useMachCtrl();
+  const info: [string, string | undefined][] = [
+    ['Kernel', sysInfo?.kernel],
+    [t('Placa-mãe'), sysInfo?.motherboard],
+    ['BIOS', sysInfo?.bios],
+    [t('Instalado em'), sysInfo?.install_date],
+  ];
   return (
     <div className="space-y-6 max-w-xl mx-auto py-6 animate-in fade-in duration-300">
       <div className="glass-card rounded-[36px] p-8 sm:p-10 border border-white/10 text-center space-y-6 relative overflow-hidden">
@@ -29,23 +40,32 @@ export const SobreTab: React.FC = () => {
             </span>
           </h2>
           <p className="text-xs text-white/50 font-mono mt-1">
-            Covenant · CachyOS Linux
+            {sysInfo ? `${sysInfo.hostname} · ${sysInfo.distro}` : t('Covenant · CachyOS Linux')}
           </p>
         </div>
 
         <p className="text-xs text-white/60 leading-relaxed font-sans max-w-md mx-auto relative z-10">
-          Monitor e Otimizador de Hardware nativo para Linux. Projetado com telemetria direta via sysfs/procfs, curvas de ventoinhas e sintonia fina de desempenho.
+          {t('Monitor e Otimizador de Hardware nativo para Linux. Projetado com telemetria direta via sysfs/procfs, curvas de ventoinhas e sintonia fina de desempenho.')}
         </p>
 
+        <div className="relative z-10 grid grid-cols-2 gap-x-6 gap-y-2 text-left text-[11px] font-mono">
+          {info.filter(([, v]) => v).map(([k, v]) => (
+            <div key={k} className="min-w-0">
+              <span className="text-white/40 block uppercase text-[10px]">{k}</span>
+              <span className="text-white/80 truncate block" title={v}>{v}</span>
+            </div>
+          ))}
+        </div>
+
         {/* Radiant Glass Donation Card (Inspired by the glowing Visa card in screenshot) */}
-        <div className="relative rounded-[28px] p-6 bg-gradient-to-tr from-amber-500/80 via-orange-500/80 to-rose-500/80 text-white shadow-2xl shadow-orange-500/25 border border-white/20 text-left overflow-hidden group">
+        <div className="relative rounded-[28px] p-6 bg-gradient-to-tr from-amber-500/80 via-orange-500/80 to-rose-500/80 keep-white-all text-white shadow-2xl shadow-orange-500/25 border border-white/20 text-left overflow-hidden group">
           <div className="absolute -right-8 -bottom-8 w-44 h-44 bg-white/20 rounded-full blur-2xl pointer-events-none group-hover:scale-125 transition-transform duration-700" />
 
           <div className="flex items-center justify-between mb-4 relative z-10">
             <div className="flex items-center gap-2">
               <Heart className="w-5 h-5 fill-white text-white drop-shadow-md" />
               <span className="font-bold text-sm tracking-wide uppercase">
-                Apoiar o MachCtrl
+                {t('Apoiar o MachCtrl')}
               </span>
             </div>
             <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-black/25 backdrop-blur-md border border-white/20 font-bold">
@@ -54,22 +74,21 @@ export const SobreTab: React.FC = () => {
           </div>
 
           <p className="text-xs text-white/90 leading-relaxed mb-6 font-medium relative z-10">
-            Se o MachCtrl te ajuda a extrair o máximo do seu sistema e você deseja incentivar novas melhorias contínuas, faça uma doação via PayPal.
+            {t('Se o MachCtrl te ajuda a extrair o máximo do seu sistema e você deseja incentivar novas melhorias contínuas, faça uma doação via PayPal.')}
           </p>
 
-          <a
-            href="https://www.paypal.com/donate/?business=andersonhenrique23%40gmail.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full py-3.5 px-6 rounded-2xl font-bold text-xs text-slate-900 bg-white hover:bg-slate-100 shadow-xl active:scale-98 transition-all flex items-center justify-center gap-2 relative z-10"
+          <button
+            type="button"
+            onClick={() => invoke('open_url', { url: PAYPAL_URL }).catch(() => {})}
+            className="keep-ink w-full py-3.5 px-6 rounded-2xl font-bold text-xs text-slate-900 bg-white hover:bg-slate-100 shadow-xl active:scale-98 transition-all flex items-center justify-center gap-2 relative z-10"
           >
-            <span>Fazer Doação pelo PayPal</span>
+            <span>{t('Fazer Doação pelo PayPal')}</span>
             <ExternalLink className="w-4 h-4 text-slate-800" />
-          </a>
+          </button>
         </div>
 
         <div className="text-[11px] font-mono text-white/40 relative z-10">
-          Agradecemos imensamente o seu apoio à comunidade Open Source!
+          {t('Agradecemos imensamente o seu apoio à comunidade Open Source!')}
         </div>
       </div>
     </div>

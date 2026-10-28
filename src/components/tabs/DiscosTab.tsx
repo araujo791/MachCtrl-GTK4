@@ -3,9 +3,10 @@ import { HardDrive, ArrowDown, ArrowUp } from 'lucide-react';
 import { useMachCtrl } from '../../context/MachCtrlContext';
 
 export const DiscosTab: React.FC = () => {
-  const { disks } = useMachCtrl();
+  const { disks, t } = useMachCtrl();
 
   const renderSmallWave = (data: number[], color: string) => {
+    if (data.length < 2) return <svg width={140} height={20} />;
     const width = 140;
     const height = 20;
     const maxVal = Math.max(1, Math.max(...data));
@@ -32,13 +33,13 @@ export const DiscosTab: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto animate-in fade-in duration-300">
+    <div className="space-y-6 page-root animate-in fade-in duration-300">
       <div>
         <h2 className="text-2xl font-bold tracking-tight text-white">
-          Armazenamento & Discos
+          {t('Armazenamento & Discos')}
         </h2>
         <p className="text-xs text-white/50 font-mono mt-0.5">
-          Taxa de leitura e escrita em tempo real, capacidade total e sistemas de arquivos (F2FS, BTRFS, EXT4, etc.)
+          {t('Taxa de leitura e escrita em tempo real, capacidade total e sistemas de arquivos (F2FS, BTRFS, EXT4, etc.)')}
         </p>
       </div>
 
@@ -46,11 +47,14 @@ export const DiscosTab: React.FC = () => {
         {disks.map((disk) => {
           const isNvme = disk.mediaType === 'NVMe';
           const isSsd = disk.mediaType === 'SSD';
+          const isUsb = disk.mediaType === 'USB';
 
           const badgeClass = isNvme
             ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30'
             : isSsd
             ? 'bg-blue-500/15 text-blue-300 border border-blue-500/30'
+            : isUsb
+            ? 'bg-purple-500/15 text-purple-300 border border-purple-500/30'
             : 'bg-orange-500/15 text-orange-400 border border-orange-500/30';
 
           const barColor = isNvme
@@ -71,7 +75,7 @@ export const DiscosTab: React.FC = () => {
                     <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded-full uppercase ${badgeClass}`}>
                       {disk.mediaType}
                     </span>
-                    <h3 className="font-bold text-sm text-white truncate">
+                    <h3 className="font-bold text-sm text-white truncate" title={disk.mountPoint}>
                       {disk.name}
                     </h3>
                   </div>
@@ -98,7 +102,7 @@ export const DiscosTab: React.FC = () => {
               <div className="pt-3 border-t border-white/10 space-y-2 text-xs font-mono">
                 <div className="flex items-center justify-between">
                   <span className="text-white/45 flex items-center gap-1.5 text-[11px]">
-                    <ArrowDown className="w-3.5 h-3.5 text-emerald-400" /> Leitura
+                    <ArrowDown className="w-3.5 h-3.5 text-emerald-400" /> {t('Leitura')}
                   </span>
                   <div className="flex items-center gap-2">
                     <span className="text-emerald-400 font-bold">
@@ -110,7 +114,7 @@ export const DiscosTab: React.FC = () => {
 
                 <div className="flex items-center justify-between">
                   <span className="text-white/45 flex items-center gap-1.5 text-[11px]">
-                    <ArrowUp className="w-3.5 h-3.5 text-orange-400" /> Escrita
+                    <ArrowUp className="w-3.5 h-3.5 text-orange-400" /> {t('Escrita')}
                   </span>
                   <div className="flex items-center gap-2">
                     <span className="text-orange-400 font-bold">

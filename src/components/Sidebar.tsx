@@ -87,12 +87,12 @@ const ITEMS: SidebarItem[] = [
 ];
 
 export const Sidebar: React.FC = () => {
-  const { activeTab, setActiveTab } = useMachCtrl();
+  const { activeTab, setActiveTab, t } = useMachCtrl();
 
   return (
-    <aside className="p-2 sm:p-3 flex flex-col items-center select-none shrink-0 z-20">
+    <aside className="p-2 sm:p-3 flex flex-col items-center justify-center select-none shrink-0 z-20">
       {/* Floating Modern Glass Capsule Dock - Kezabank & VisionOS Style */}
-      <div className="glass-dock rounded-[28px] p-2 flex flex-col items-center gap-2 border border-white/10 dark:border-white/10 shadow-2xl backdrop-blur-2xl">
+      <div className="glass-dock rounded-[28px] p-2 max-h-full overflow-y-auto flex flex-col items-center gap-2 border border-white/10 dark:border-white/10 shadow-2xl backdrop-blur-2xl">
         {ITEMS.map((item) => {
           const isActive = activeTab === item.id;
           const Icon = item.icon;
@@ -106,8 +106,8 @@ export const Sidebar: React.FC = () => {
                   ? `bg-gradient-to-tr ${item.activeGradient} text-white shadow-lg ${item.shadowGlow} scale-105`
                   : 'text-slate-400 dark:text-white/45 hover:text-slate-800 dark:hover:text-white hover:bg-white/10 dark:hover:bg-white/10'
               }`}
-              title={item.label}
-              aria-label={item.label}
+              title={t(item.label)}
+              aria-label={t(item.label)}
             >
               <Icon
                 className={`w-5 h-5 sm:w-5.5 sm:h-5.5 transition-transform duration-300 ${
@@ -117,7 +117,7 @@ export const Sidebar: React.FC = () => {
 
               {/* Floating Modern Tooltip Pill on Hover */}
               <div className="absolute left-full ml-3 px-3 py-1 rounded-full bg-[#121622]/90 backdrop-blur-xl border border-white/15 text-white text-[11px] font-medium tracking-tight shadow-xl whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-all duration-200 z-50">
-                {item.label}
+                {t(item.label)}
               </div>
             </button>
           );

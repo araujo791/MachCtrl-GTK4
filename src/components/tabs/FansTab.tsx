@@ -1,34 +1,42 @@
 import React from 'react';
 import { Fan, TrendingUp, Sliders } from 'lucide-react';
 import { useMachCtrl } from '../../context/MachCtrlContext';
+import { FanMode } from '../../types/machctrl';
+
+const MODE_LABEL: Record<FanMode, string> = { auto: 'Automático', manual: 'Manual', max: 'Máximo', curve: 'Curva' };
 
 export const FansTab: React.FC = () => {
-  const { fans, updateFanMode, updateFanPwm, setIsCurveEditorOpen } = useMachCtrl();
+  const { fans, fansLoaded, setFanMode, setFanManualPct, openCurveEditor, t } = useMachCtrl();
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto animate-in fade-in duration-300">
+    <div className="space-y-6 page-root animate-in fade-in duration-300">
       {/* Header title */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-            <span>Controle de Ventoinhas (Fans)</span>
+            <span>{t('Controle de Ventoinhas (Fans)')}</span>
             <span className="text-xs font-mono px-3 py-1 rounded-full bg-cyan-500/15 text-cyan-400 font-bold border border-cyan-500/25">
               PWM / RPM
             </span>
           </h2>
           <p className="text-xs text-white/50 font-mono mt-0.5">
-            Controle de rotação por hardware e curvas térmicas com animação fluida
+            {t('Controle de rotação por hardware e curvas térmicas com animação fluida')}
           </p>
         </div>
 
         <button
-          onClick={() => setIsCurveEditorOpen(true)}
-          className="px-4 py-2 rounded-2xl text-xs font-bold bg-white/10 hover:bg-white/15 text-white border border-white/15 flex items-center gap-2 shadow-lg backdrop-blur-xl transition-all active:scale-95 self-start sm:self-auto"
+          onClick={() => openCurveEditor()}
+          disabled={!fans.some((f) => f.controllable)}
+          className="px-4 py-2 rounded-2xl text-xs font-bold bg-white/10 disabled:opacity-40 hover:bg-white/15 text-white border border-white/15 flex items-center gap-2 shadow-lg backdrop-blur-xl transition-all active:scale-95 self-start sm:self-auto"
         >
           <TrendingUp className="w-4 h-4 text-purple-400" />
-          <span>Editor de Curvas Térmicas</span>
+          <span>{t('Editor de Curvas Térmicas')}</span>
         </button>
       </div>
+
+      {fansLoaded && fans.length === 0 && (
+        <div className="text-sm font-mono text-white/50">{t('Nenhuma ventoinha detectada')}</div>
+      )}
 
       {/* Fan Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
@@ -84,17 +92,19 @@ export const FansTab: React.FC = () => {
                       </h3>
                     </div>
                     <div className="text-[11px] font-mono text-white/50 mt-1">
-                      modo:{' '}
+                      {t('modo:')}{' '}
                       <strong
                         className={
-                          fan.mode === 'Automático'
+                          !fan.controllable
+                            ? 'text-white/40'
+                            : fan.mode === 'auto'
                             ? 'text-emerald-400'
-                            : fan.mode === 'Curva'
+                            : fan.mode === 'curve'
                             ? 'text-purple-400'
                             : 'text-cyan-400'
                         }
                       >
-                        {fan.mode}
+                        {fan.controllable ? t(MODE_LABEL[fan.mode]) : t('somente leitura')}
                       </strong>
                     </div>
                   </div>
@@ -114,7 +124,7 @@ export const FansTab: React.FC = () => {
               {/* PWM Progress Bar */}
               <div className="space-y-2 relative z-10">
                 <div className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-white/50">PWM atual</span>
+                  <span className="text-white/50">{t('PWM atual')}</span>
                   <span className="font-bold text-white">
                     {fan.pwmPercent}%
                   </span>
@@ -131,7 +141,7 @@ export const FansTab: React.FC = () => {
                   />
                 </div>
 
-                {fan.mode === 'Manual' && (
+                {fan.controllable && fan.mode === 'manual' && (
                   <div className="pt-2 animate-in fade-in duration-150">
                     <input
                       type="range"
@@ -139,7 +149,7 @@ export const FansTab: React.FC = () => {
                       max="100"
                       step="5"
                       value={fan.pwmPercent}
-                      onChange={(e) => updateFanPwm(fan.id, parseInt(e.target.value, 10))}
+                      onChange={(e) => setFanManualPct(fan.id, parseInt(e.target.value, 10))}
                       className="w-full accent-cyan-400 h-1.5 bg-white/20 rounded-lg cursor-pointer"
                     />
                   </div>
@@ -147,53 +157,53 @@ export const FansTab: React.FC = () => {
               </div>
 
               {/* Mode Buttons */}
+              {fan.controllable && (
               <div className="pt-3 border-t border-white/10 space-y-2.5 relative z-10">
                 <div className="flex items-center gap-1.5">
-                  {(['Automático', 'Manual', 'Máximo'] as const).map((m) => {
+                  {(['auto', 'manual', 'max'] as const).map((m) => {
                     const isSelected = fan.mode === m;
                     return (
                       <button
                         key={m}
-                        onClick={() => updateFanMode(fan.id, m)}
+                        onClick={() => setFanMode(fan.id, m)}
                         className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-semibold transition-all border ${
                           isSelected
-                            ? m === 'Automático'
+                            ? m === 'auto'
                               ? 'border-emerald-500 text-emerald-400 bg-emerald-500/15 shadow-sm shadow-emerald-500/20'
-                              : m === 'Máximo'
+                              : m === 'max'
                               ? 'border-rose-500 text-rose-400 bg-rose-500/15 shadow-sm shadow-rose-500/20'
                               : 'border-cyan-500 text-cyan-400 bg-cyan-500/15 shadow-sm shadow-cyan-500/20'
                             : 'border-white/10 text-white/60 hover:bg-white/10 hover:text-white'
                         }`}
                       >
-                        {m}
+                        {t(MODE_LABEL[m])}
                       </button>
                     );
                   })}
 
-                  {fan.hasCurveSupport && (
-                    <button
-                      onClick={() => updateFanMode(fan.id, 'Curva')}
+                  <button
+                      onClick={() => setFanMode(fan.id, 'curve')}
                       className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-semibold transition-all border ${
-                        fan.mode === 'Curva'
+                        fan.mode === 'curve'
                           ? 'border-purple-500 text-purple-400 bg-purple-500/15 shadow-sm shadow-purple-500/20'
                           : 'border-white/10 text-white/60 hover:bg-white/10 hover:text-white'
                       }`}
                     >
-                      Curva
+                      {t('Curva')}
                     </button>
-                  )}
                 </div>
 
-                {fan.hasCurveSupport && (
+                {fan.mode === 'curve' && (
                   <button
-                    onClick={() => setIsCurveEditorOpen(true)}
+                    onClick={() => openCurveEditor(fan.id)}
                     className="w-full py-2 px-3 rounded-xl text-xs font-bold text-purple-300 bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 flex items-center justify-center gap-1.5 transition-all shadow-sm active:scale-98"
                   >
                     <TrendingUp className="w-3.5 h-3.5 text-purple-400" />
-                    <span>Curva ativa — clique para editar</span>
+                    <span>{t('Curva ativa — clique para editar')}</span>
                   </button>
                 )}
               </div>
+              )}
             </div>
           );
         })}
