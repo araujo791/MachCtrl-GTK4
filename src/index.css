@@ -134,7 +134,7 @@
   color: #0f172a;
 }
 .light .page-root > :first-child {
-  background: linear-gradient(180deg, rgba(244, 237, 227, 0.9) 78%, rgba(247, 241, 232, 0));
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.52));
 }
 .light .glass-panel, .light .glass-dock {
   background: rgba(255, 255, 255, 0.55);
