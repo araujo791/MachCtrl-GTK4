@@ -40,10 +40,6 @@ export const OverviewTab: React.FC = () => {
   const maxRpm = Math.max(0, ...fans.map((f) => f.rpm));
   const cores = sockets.reduce((a, s) => a + s.cores, 0);
   const threads = sockets.reduce((a, s) => a + s.threads, 0);
-  const peak = Math.round(Math.max(0, ...hist.cpu));
-  const chartMax = Math.max(20, Math.ceil(Math.max(peak, ...hist.ram, 0) / 10) * 10);
-  const cpuCurve = splinePath(hist.cpu, chartMax);
-  const ramCurve = splinePath(hist.ram, chartMax);
   const memPct = snap.mem_pct;
   const gpu = snap.gpus[0];
   const gpuLoad = gpu?.usage_pct ?? (gpu?.freq_mhz != null && gpu?.freq_max_mhz ? (gpu.freq_mhz / gpu.freq_max_mhz) * 100 : null);
@@ -104,88 +100,64 @@ export const OverviewTab: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-stretch">
-        {/* Gráfico em tempo real */}
-        <div className="lg:col-span-2 glass-card rounded-[30px] p-6 border border-white/10 flex flex-col justify-between relative overflow-hidden">
+        {/* Processadores: uso em tempo real por CPU */}
+        <div className="lg:col-span-2 glass-card rounded-[30px] p-6 border border-white/10 flex flex-col gap-4 relative overflow-hidden">
           <div className="absolute -bottom-10 right-10 w-64 h-64 bg-orange-500/10 rounded-full blur-[80px] pointer-events-none" />
-
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between relative">
             <div>
-              <h3 className="text-lg font-bold text-white tracking-tight">{t('Uso da CPU')}</h3>
-              <p className="text-xs text-white/50 mt-0.5">{sysInfo?.cpu_model}</p>
-            </div>
-            <div className="px-3.5 py-1.5 rounded-full bg-white/10 border border-white/10 text-xs text-white font-mono">60s · 0–{chartMax}%</div>
-          </div>
-
-          <div className="flex items-center gap-5 text-xs mb-3">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#ff782d] shadow-xs shadow-orange-500/50" />
-              <span className="text-white/80 font-medium">{t('Uso da CPU')}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-white/50" />
-              <span className="text-white/60">{t('Memória RAM')}</span>
+              <h3 className="text-lg font-bold text-white tracking-tight">{t('Processadores')}</h3>
+              <p className="text-xs text-white/50 mt-0.5">{cores} {t('núcleos')} / {threads} {t('threads')}</p>
             </div>
           </div>
 
-          <div className="relative py-4 my-auto">
-            {cpuCurve.last && (
-              <div
-                className="absolute top-2 -translate-x-1/2 flex flex-col items-center pointer-events-none z-10"
-                style={{ left: '92%' }}
-              >
-                <div className="keep-white px-3 py-1 rounded-full bg-black/80 backdrop-blur-md border border-white/20 text-white text-[11px] font-mono font-bold shadow-xl whitespace-nowrap">
-                  {cpuT > 0 ? `${cpuT.toFixed(0)}°C · ` : ''}{t('Pico')} {peak}%
+          <div className="flex-1 flex flex-col gap-4 relative">
+            {sockets.map((s) => {
+              const h = hist.sock[s.id] ?? [];
+              const pk = Math.max(0, ...h);
+              const curve = splinePath(h, Math.max(25, Math.ceil((pk * 1.4) / 5) * 5));
+              const gid = `cpuGlow${s.id}`;
+              return (
+                <div key={s.id} className="flex-1 min-h-[150px] p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 shrink-0 rounded-xl bg-gradient-to-tr from-indigo-500/20 to-cyan-400/20 text-cyan-400 border border-cyan-400/30 flex flex-col items-center justify-center font-mono font-bold leading-none">
+                        <span className="text-[8px] text-white/60">CPU</span>
+                        <span className="text-sm">{s.id}</span>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-white truncate" title={s.model}>{s.model}</div>
+                        <div className="text-[11px] font-mono text-white/50">{s.cores} {t('núcleos')} · {s.threads} {t('threads')} · {s.freqGhz.toFixed(2)} GHz</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-5 font-mono text-right shrink-0">
+                      <div>
+                        <span className="text-[10px] text-white/40 uppercase block">{t('Uso')}</span>
+                        <span className="text-lg font-extrabold text-cyan-400">{s.usageAvg}%</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-white/40 uppercase block">{t('Temperatura')}</span>
+                        <span className="text-lg font-extrabold text-emerald-400">{s.tempAvg != null ? `${s.tempAvg.toFixed(0)}°C` : '—'}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex-1 min-h-[70px] relative">
+                    <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 w-full h-full overflow-visible" preserveAspectRatio="none">
+                      <defs>
+                        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#ff782d" stopOpacity="0.35" />
+                          <stop offset="100%" stopColor="#ff782d" stopOpacity="0" />
+                        </linearGradient>
+                      </defs>
+                      {curve.area && <path d={curve.area} fill={`url(#${gid})`} />}
+                      {curve.line && (
+                        <path d={curve.line} fill="none" stroke="#ff782d" strokeWidth="3" strokeLinecap="round" vectorEffect="non-scaling-stroke"
+                          style={{ filter: 'drop-shadow(0 4px 10px rgba(255, 120, 45, 0.55))' }} />
+                      )}
+                    </svg>
+                  </div>
                 </div>
-                <div className="w-2 h-2 rounded-full bg-white ring-4 ring-[#ff782d] shadow-lg mt-1" />
-              </div>
-            )}
-
-            <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-56 overflow-visible" preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="orangeGlow" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#ff782d" stopOpacity="0.35" />
-                  <stop offset="100%" stopColor="#ff782d" stopOpacity="0.0" />
-                </linearGradient>
-              </defs>
-              {ramCurve.line && (
-                <path d={ramCurve.line} fill="none" stroke="rgba(255,255,255,0.28)" strokeWidth="2" strokeDasharray="6 6" vectorEffect="non-scaling-stroke" />
-              )}
-              {cpuCurve.area && <path d={cpuCurve.area} fill="url(#orangeGlow)" />}
-              {cpuCurve.line && (
-                <path
-                  d={cpuCurve.line}
-                  fill="none"
-                  stroke="#ff782d"
-                  strokeWidth="3.5"
-                  strokeLinecap="round"
-                  vectorEffect="non-scaling-stroke"
-                  style={{ filter: 'drop-shadow(0 4px 12px rgba(255, 120, 45, 0.6))' }}
-                />
-              )}
-            </svg>
-
-            <div className="flex justify-between text-[11px] font-mono text-white/40 pt-2 border-t border-white/5">
-              {['60s', '50s', '40s', '30s', '20s', '10s', '0s'].map((l) => <span key={l}>{l}</span>)}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-white/10 text-xs font-mono">
-            <div>
-              <span className="text-[10px] text-white/40 uppercase block">{t('Núcleos')}</span>
-              <span className="font-bold text-white mt-0.5 block">{cores} / {threads} {t('Threads')}</span>
-            </div>
-            <div>
-              <span className="text-[10px] text-white/40 uppercase block">{t('Frequência')}</span>
-              <span className="font-bold text-cyan-400 mt-0.5 block">{(snap.cpu_freq_mhz / 1000).toFixed(2)} GHz</span>
-            </div>
-            <div>
-              <span className="text-[10px] text-white/40 uppercase block">{t('Pico')}</span>
-              <span className="font-bold text-white mt-0.5 block">{peak}%</span>
-            </div>
-            <div>
-              <span className="text-[10px] text-white/40 uppercase block">{t('Temperatura')}</span>
-              <span className={`font-bold mt-0.5 block ${tempColor}`}>{cpuT > 0 ? `${cpuT.toFixed(0)}°C` : '—'}</span>
-            </div>
+              );
+            })}
           </div>
         </div>
 
@@ -290,40 +262,6 @@ export const OverviewTab: React.FC = () => {
               </div>
             </div>
           )}
-        </div>
-      </div>
-
-      {/* Processadores disponíveis */}
-      <div className="glass-card rounded-[30px] p-6 border border-white/10 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">{t('Processadores')}</h3>
-          <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] text-white/70 font-mono">
-            {sockets.length} · {cores} {t('núcleos')} / {threads} {t('threads')}
-          </span>
-        </div>
-        <div className={`grid gap-4 ${sockets.length > 1 ? 'md:grid-cols-2' : ''}`}>
-          {sockets.map((s) => (
-            <div key={s.id} className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500/20 to-cyan-400/20 text-cyan-400 border border-cyan-400/30 flex flex-col items-center justify-center font-mono font-bold leading-none">
-                  <span className="text-[8px] text-white/60">CPU</span>
-                  <span className="text-sm">{s.id}</span>
-                </div>
-                <div className="min-w-0">
-                  <div className="text-sm font-bold text-white truncate" title={s.model}>{s.model}</div>
-                  <div className="text-[11px] font-mono text-white/50">{s.cores} {t('núcleos')} · {s.threads} {t('threads')} · {s.freqGhz.toFixed(2)} GHz</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 text-xs font-mono">
-                <span className="w-10 text-white/45">{t('Uso')}</span>
-                <div className="flex-1 bg-white/10 rounded-full h-2 overflow-hidden">
-                  <div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-500" style={{ width: `${Math.max(2, s.usageAvg)}%` }} />
-                </div>
-                <span className="w-10 text-right font-bold text-cyan-400">{s.usageAvg}%</span>
-                <span className="w-14 text-right font-bold text-emerald-400">{s.tempAvg != null ? `${s.tempAvg.toFixed(0)}°C` : '—'}</span>
-              </div>
-            </div>
-          ))}
         </div>
       </div>
 

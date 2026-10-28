@@ -93,7 +93,7 @@ pub fn read_amd_gpus() -> Vec<GpuInfo> {
         gpus.push(GpuInfo {
             vendor: "amd".to_string(),
             index: idx as i32,
-            name: "AMD GPU".to_string(), // refinar com pci.ids se necessário
+            name: pci_name(&device_path).unwrap_or_else(|| "AMD GPU".to_string()),
             temp_c,
             fan_pct,
             fan_rpm,
@@ -209,7 +209,7 @@ pub fn read_intel_gpus_from(root: &Path) -> Vec<GpuInfo> {
         gpus.push(GpuInfo {
             vendor: "intel".to_string(),
             index: idx as i32,
-            name: "Intel Graphics".to_string(),
+            name: pci_name(&card.join("device")).unwrap_or_else(|| "Intel Graphics".to_string()),
             freq_mhz,
             freq_max_mhz,
             ..Default::default()
@@ -329,5 +329,62 @@ mod tests {
         w(&root.join("card0/device/vendor"), "0x1002");
         assert!(read_intel_gpus_from(&root).is_empty());
         assert!(read_intel_gpus_from(Path::new("/nonexistent-xyz")).is_empty());
+    }
+}
+
+/// Resolve o nome comercial da placa via pci.ids (vendor/device do sysfs).
+/// Usa o texto entre colchetes quando existe (ex.: "Radeon RX 550 640SP").
+fn pci_name(device_path: &std::path::Path) -> Option<String> {
+    let hex = |n: &str| {
+        std::fs::read_to_string(device_path.join(n))
+            .ok()
+            .map(|s| s.trim().trim_start_matches("0x").to_lowercase())
+    };
+    let (ven, dev) = (hex("vendor")?, hex("device")?);
+    for p in ["/usr/share/hwdata/pci.ids", "/usr/share/misc/pci.ids", "/usr/share/pci.ids"] {
+        if let Ok(txt) = std::fs::read_to_string(p) {
+            if let Some(n) = lookup_pci_ids(&txt, &ven, &dev) {
+                return Some(n);
+            }
+        }
+    }
+    None
+}
+
+fn lookup_pci_ids(txt: &str, ven: &str, dev: &str) -> Option<String> {
+    let mut in_vendor = false;
+    for line in txt.lines() {
+        if line.starts_with('#') || line.trim().is_empty() {
+            continue;
+        }
+        if !line.starts_with('\t') {
+            if in_vendor {
+                return None;
+            }
+            in_vendor = line.starts_with(ven) && line[ven.len()..].starts_with("  ");
+        } else if in_vendor && !line.starts_with("\t\t") {
+            let l = &line[1..];
+            if l.starts_with(dev) && l[dev.len()..].starts_with("  ") {
+                let name = l[dev.len()..].trim();
+                if let (Some(a), Some(b)) = (name.rfind('['), name.rfind(']')) {
+                    if a < b {
+                        return Some(name[a + 1..b].to_string());
+                    }
+                }
+                return Some(name.to_string());
+            }
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod pci_tests {
+    use super::lookup_pci_ids;
+    #[test]
+    fn resolve_nome() {
+        let t = "1002  Advanced Micro Devices, Inc. [AMD/ATI]\n\t699f  Lexa PRO [Radeon 540/540X/550/550X / RX 540X/550/550X]\n\t\t1002 0001  sub\n1003  Outro\n\t699f  X\n";
+        assert_eq!(lookup_pci_ids(t, "1002", "699f").unwrap(), "Radeon 540/540X/550/550X / RX 540X/550/550X");
+        assert!(lookup_pci_ids(t, "1002", "0000").is_none());
     }
 }

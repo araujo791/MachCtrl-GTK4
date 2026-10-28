@@ -2,7 +2,7 @@ import React from 'react';
 import {
   LayoutGrid,
   Cpu,
-  Layers,
+  MemoryStick,
   HardDrive,
   Fan,
   Zap,
@@ -38,7 +38,7 @@ const ITEMS: SidebarItem[] = [
   {
     id: 'memoria',
     label: 'Memória',
-    icon: Layers,
+    icon: MemoryStick,
     activeGradient: 'from-emerald-500 to-teal-400',
     shadowGlow: 'shadow-emerald-500/30',
   },
