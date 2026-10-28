@@ -11,7 +11,7 @@ export const HeaderBar: React.FC = () => {
     <header data-tauri-drag-region className="relative px-4 sm:px-6 pt-3 pb-2 flex items-center justify-between select-none shrink-0 z-30">
       {/* Esquerda: marca */}
       <div data-tauri-drag-region className="flex items-center gap-2 text-xs">
-        <img src="/favicon.png" alt="" className="w-10 h-10 rounded-xl" draggable={false} />
+        <img src="/logo-header.png" alt="" width={40} height={40} className="w-10 h-10 rounded-xl" draggable={false} />
         <span className="font-extrabold tracking-tight text-white text-sm">MachCtrl</span>
         <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/10 text-amber-400 font-bold border border-white/10">v3.0</span>
       </div>
