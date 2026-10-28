@@ -6,7 +6,6 @@ export const DiscosTab: React.FC = () => {
   const { disks, t } = useMachCtrl();
 
   const renderSmallWave = (data: number[], color: string) => {
-    if (data.length < 2) return <svg width={140} height={20} />;
     const width = 140;
     const height = 20;
     const maxVal = Math.max(1, Math.max(...data));
@@ -17,8 +16,9 @@ export const DiscosTab: React.FC = () => {
     });
     const pathD = pts.reduce((acc, p, i) => (i === 0 ? `M ${p.x} ${p.y}` : `${acc} L ${p.x} ${p.y}`), '');
 
+    if (data.length < 2) return <svg className="flex-1 min-w-0" height={height} />;
     return (
-      <svg width={width} height={height} className="overflow-visible">
+      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="flex-1 min-w-0 overflow-visible" height={height}>
         <path
           d={pathD}
           fill="none"
@@ -26,6 +26,7 @@ export const DiscosTab: React.FC = () => {
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
           style={{ filter: `drop-shadow(0 0 6px ${color}88)` }}
         />
       </svg>
@@ -100,28 +101,24 @@ export const DiscosTab: React.FC = () => {
 
               {/* Read / Write Stats & Waves */}
               <div className="pt-3 border-t border-white/10 space-y-2 text-xs font-mono">
-                <div className="flex items-center justify-between">
-                  <span className="text-white/45 flex items-center gap-1.5 text-[11px]">
+                <div className="flex items-center gap-3">
+                  <span className="text-white/45 flex items-center gap-1.5 text-[11px] w-[74px] shrink-0">
                     <ArrowDown className="w-3.5 h-3.5 text-emerald-400" /> {t('Leitura')}
                   </span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-emerald-400 font-bold">
-                      {disk.readMb.toFixed(1)} MB/s
-                    </span>
-                    {renderSmallWave(disk.readHistory, '#10b981')}
-                  </div>
+                  <span className="text-emerald-400 font-bold w-[84px] shrink-0 text-right">
+                    {disk.readMb.toFixed(1)} MB/s
+                  </span>
+                  {renderSmallWave(disk.readHistory, '#10b981')}
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <span className="text-white/45 flex items-center gap-1.5 text-[11px]">
+                <div className="flex items-center gap-3">
+                  <span className="text-white/45 flex items-center gap-1.5 text-[11px] w-[74px] shrink-0">
                     <ArrowUp className="w-3.5 h-3.5 text-orange-400" /> {t('Escrita')}
                   </span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-orange-400 font-bold">
-                      {disk.writeMb.toFixed(1)} MB/s
-                    </span>
-                    {renderSmallWave(disk.writeHistory, '#f97316')}
-                  </div>
+                  <span className="text-orange-400 font-bold w-[84px] shrink-0 text-right">
+                    {disk.writeMb.toFixed(1)} MB/s
+                  </span>
+                  {renderSmallWave(disk.writeHistory, '#f97316')}
                 </div>
               </div>
             </div>
