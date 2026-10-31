@@ -10,7 +10,7 @@ export const MemoriaTab: React.FC = () => {
   const used = snap?.mem_used_gb ?? 0;
 
   return (
-    <div className="space-y-6 page-root animate-in fade-in duration-300">
+    <div className="page-root animate-in fade-in duration-300">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-white">
@@ -22,6 +22,8 @@ export const MemoriaTab: React.FC = () => {
         </div>
         <StatPills />
       </div>
+
+      <div className="page-body space-y-6">
 
       {/* Top Main Memory Bar Card */}
       <div className="glass-card rounded-[30px] p-6 border border-white/10 flex flex-col md:flex-row items-center gap-6">
@@ -139,6 +141,7 @@ export const MemoriaTab: React.FC = () => {
             )
           )}
         </div>
+      </div>
       </div>
     </div>
   );

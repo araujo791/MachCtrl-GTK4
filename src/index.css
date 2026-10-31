@@ -109,18 +109,25 @@
     var(--wp) center / cover no-repeat;
 }
 
-/* Cabeçalho da página fixo: não rola junto com o conteúdo */
+/* Página: cabeçalho fixo (fora da rolagem) + corpo que rola abaixo dele */
+.page-root { height: 100%; display: flex; flex-direction: column; }
 .page-root > :first-child {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  padding: 8px 14px 12px;
-  margin: 0 -8px 18px;
+  flex-shrink: 0;
+  padding: 10px 16px;
+  margin: 0 0 12px;
   border-radius: 24px;
-  background: linear-gradient(180deg, rgba(26, 30, 42, 0.74) 78%, rgba(26, 30, 42, 0));
-  backdrop-filter: blur(22px);
-  -webkit-backdrop-filter: blur(22px);
+  background: linear-gradient(135deg, rgba(62, 52, 128, 0.92), rgba(28, 64, 112, 0.92));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.16);
 }
+.page-body {
+  flex: 1; min-height: 0; overflow-y: auto; padding: 14px 8px 18px 0;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 18px, #000 calc(100% - 22px), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 18px, #000 calc(100% - 22px), transparent 100%);
+}
+.page-body::-webkit-scrollbar { width: 5px; }
+.page-body::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.22); border-radius: 9999px; }
+.light .page-body::-webkit-scrollbar-thumb { background: rgba(15, 23, 42, 0.28); }
 
 /* ================= TEMA CLARO ================= */
 .light .ambient-bg {
@@ -134,7 +141,9 @@
   color: #0f172a;
 }
 .light .page-root > :first-child {
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.52));
+  background: linear-gradient(135deg, rgba(255, 226, 190, 0.96), rgba(255, 205, 170, 0.94));
+  border-color: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 10px 26px rgba(120, 70, 20, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 .light .glass-panel, .light .glass-dock {
   background: rgba(255, 255, 255, 0.55);
@@ -181,6 +190,3 @@
 .light [fill*="rgba(255"] { fill: rgba(15, 23, 42, 0.5); }
 .light ::-webkit-scrollbar-thumb { background: rgba(15, 23, 42, 0.22); }
 
-/* Rolagem da página sem barra visível: evita deslocar o layout ao trocar de aba */
-.page-scroll { scrollbar-width: none; }
-.page-scroll::-webkit-scrollbar { display: none; width: 0; height: 0; }

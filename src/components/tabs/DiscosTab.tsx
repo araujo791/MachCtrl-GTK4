@@ -35,7 +35,7 @@ export const DiscosTab: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 page-root animate-in fade-in duration-300">
+    <div className="page-root animate-in fade-in duration-300">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-white">
@@ -47,6 +47,8 @@ export const DiscosTab: React.FC = () => {
         </div>
         <StatPills />
       </div>
+
+      <div className="page-body space-y-6">
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
         {disks.map((disk) => {
@@ -128,6 +130,7 @@ export const DiscosTab: React.FC = () => {
             </div>
           );
         })}
+      </div>
       </div>
     </div>
   );

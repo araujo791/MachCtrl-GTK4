@@ -7,7 +7,7 @@ export const CpuTab: React.FC = () => {
   const { sockets, t } = useMachCtrl();
 
   return (
-    <div className="space-y-6 page-root animate-in fade-in duration-300">
+    <div className="page-root animate-in fade-in duration-300">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-white">
@@ -19,6 +19,8 @@ export const CpuTab: React.FC = () => {
         </div>
         <StatPills />
       </div>
+
+      <div className="page-body space-y-6">
 
       {sockets.length === 0 && <div className="text-sm font-mono text-white/50">{t('Aguardando leitura…')}</div>}
       <div className="space-y-6">
@@ -110,6 +112,7 @@ export const CpuTab: React.FC = () => {
             </div>
           </div>
         ))}
+      </div>
       </div>
     </div>
   );

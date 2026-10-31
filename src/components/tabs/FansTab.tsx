@@ -10,7 +10,7 @@ export const FansTab: React.FC = () => {
   const { fans, fansLoaded, setFanMode, setFanManualPct, openCurveEditor, t } = useMachCtrl();
 
   return (
-    <div className="space-y-6 page-root animate-in fade-in duration-300">
+    <div className="page-root animate-in fade-in duration-300">
       {/* Header title */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -26,6 +26,8 @@ export const FansTab: React.FC = () => {
         </div>
         <StatPills />
       </div>
+
+      <div className="page-body space-y-6">
 
       {fansLoaded && fans.length === 0 && (
         <div className="text-sm font-mono text-white/50">{t('Nenhuma ventoinha detectada')}</div>
@@ -200,6 +202,7 @@ export const FansTab: React.FC = () => {
             </div>
           );
         })}
+      </div>
       </div>
     </div>
   );

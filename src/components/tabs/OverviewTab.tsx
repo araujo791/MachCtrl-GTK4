@@ -77,7 +77,7 @@ export const OverviewTab: React.FC = () => {
   const product = sysInfo ? [sysInfo.product_name, sysInfo.distro, `Kernel ${sysInfo.kernel}`].filter(Boolean).join(' · ') : '';
 
   return (
-    <div className="space-y-5 page-root animate-in fade-in duration-300">
+    <div className="page-root animate-in fade-in duration-300">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white flex items-center gap-2">
@@ -88,6 +88,8 @@ export const OverviewTab: React.FC = () => {
 
         <StatPills />
       </div>
+
+      <div className="page-body space-y-6">
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-stretch">
         {/* Processadores: uso em tempo real por CPU */}
@@ -287,6 +289,7 @@ export const OverviewTab: React.FC = () => {
             ))}
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

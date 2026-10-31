@@ -16,7 +16,7 @@ export const LimpezaTab: React.FC = () => {
   const allDone = cleanupTasks.length > 0 && cleanupTasks.every((x) => x.status === 'done');
 
   return (
-    <div className="space-y-6 page-root animate-in fade-in duration-300">
+    <div className="page-root animate-in fade-in duration-300">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-white">{t('Limpeza & Manutenção do Sistema')}</h2>
@@ -26,6 +26,8 @@ export const LimpezaTab: React.FC = () => {
         </div>
         <StatPills />
       </div>
+
+      <div className="page-body space-y-6">
 
       <div className="glass-card rounded-[30px] p-6 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -89,6 +91,7 @@ export const LimpezaTab: React.FC = () => {
             </button>
           </div>
         ))}
+      </div>
       </div>
     </div>
   );

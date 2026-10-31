@@ -22,7 +22,7 @@ export const EnergiaTab: React.FC = () => {
   const num = (v: number | null | undefined, d = 1) => (v == null ? '—' : v.toFixed(d));
 
   return (
-    <div className="space-y-6 page-root animate-in fade-in duration-300">
+    <div className="page-root animate-in fade-in duration-300">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-white">{t('Perfis de Energia & Bateria')}</h2>
@@ -32,6 +32,8 @@ export const EnergiaTab: React.FC = () => {
         </div>
         <StatPills />
       </div>
+
+      <div className="page-body space-y-6">
 
       {battery && (
         <div className="glass-card rounded-[30px] p-6 border border-white/10 space-y-6">
@@ -173,6 +175,7 @@ export const EnergiaTab: React.FC = () => {
       <p className="text-[11px] font-mono text-white/40 text-center sm:text-left">
         {energyError ? <span className="text-rose-400">{energyError}</span> : t('Aplicar perfil requer privilégios (escrita em /sys).')}
       </p>
+      </div>
     </div>
   );
 };

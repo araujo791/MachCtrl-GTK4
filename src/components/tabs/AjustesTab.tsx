@@ -60,7 +60,7 @@ export const AjustesTab: React.FC = () => {
   const hasDirty = tune.dirty_ratio != null || tune.dirty_bg_ratio != null;
 
   return (
-    <div className="space-y-6 page-root animate-in fade-in duration-300">
+    <div className="page-root animate-in fade-in duration-300">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-white">{t('Ajustes do Sistema (Kernel Tuning)')}</h2>
@@ -70,6 +70,8 @@ export const AjustesTab: React.FC = () => {
         </div>
         <StatPills />
       </div>
+
+      <div className="page-body space-y-6">
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
         <div className="space-y-5">
@@ -215,6 +217,7 @@ export const AjustesTab: React.FC = () => {
             </div>
           </div>
         )}
+      </div>
       </div>
     </div>
   );
