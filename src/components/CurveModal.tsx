@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { X, Check, Fan } from 'lucide-react';
 import { useMachCtrl } from '../context/MachCtrlContext';
 
 export const CurveModal: React.FC = () => {
   const { curveFanId, closeCurveEditor, curvePoints, setCurvePoint, applyCurve, fans, t } = useMachCtrl();
   const fan = fans.find((f) => f.id === curveFanId);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [drag, setDrag] = useState<number | null>(null);
 
   if (!curveFanId || !fan) return null;
   const fanCurve = [...curvePoints];
@@ -17,6 +19,21 @@ export const CurveModal: React.FC = () => {
     const x = padding + (Math.max(0, Math.min(100, temp)) / 100) * (svgWidth - padding * 2);
     const y = svgHeight - padding - (speed / 100) * (svgHeight - padding * 2);
     return { x, y };
+  };
+
+  // Converte a posição do ponteiro (tela) em °C / % dentro do gráfico e move o nó arrastado.
+  const moveTo = (idx: number, clientX: number, clientY: number) => {
+    const svg = svgRef.current;
+    const m = svg?.getScreenCTM();
+    if (!svg || !m) return;
+    const p = new DOMPoint(clientX, clientY).matrixTransform(m.inverse());
+    let temp = Math.round(((p.x - padding) / (svgWidth - padding * 2)) * 100);
+    let pct = Math.round((((svgHeight - padding - p.y) / (svgHeight - padding * 2)) * 100) / 5) * 5;
+    const lo = idx > 0 ? fanCurve[idx - 1].temp + 1 : 0;
+    const hi = idx < fanCurve.length - 1 ? fanCurve[idx + 1].temp - 1 : 100;
+    temp = Math.max(lo, Math.min(hi, temp));
+    pct = Math.max(10, Math.min(100, pct));
+    setCurvePoint(idx, { temp, pct });
   };
 
   const pathPoints = fanCurve.map((pt) => getCoordinates(pt.temp, pt.pct));
@@ -56,7 +73,9 @@ export const CurveModal: React.FC = () => {
         {/* SVG Viewport */}
         <div className="p-6 space-y-4">
           <div className="curve-box bg-black/30 rounded-2xl p-4 border border-white/10 flex flex-col items-center">
-            <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="w-full h-auto overflow-visible select-none">
+            <svg ref={svgRef} viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="w-full h-auto overflow-visible select-none touch-none"
+              onPointerMove={(e) => { if (drag !== null) moveTo(drag, e.clientX, e.clientY); }}
+              onPointerUp={() => setDrag(null)} onPointerCancel={() => setDrag(null)} onPointerLeave={() => setDrag(null)}>
               <defs>
                 <linearGradient id="modalCurveGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.45" />
@@ -96,7 +115,9 @@ export const CurveModal: React.FC = () => {
                 const { x, y } = getCoordinates(pt.temp, pt.pct);
                 return (
                   <g key={idx}>
-                    <circle cx={x} cy={y} r="6" fill="#a855f7" stroke="#ffffff" strokeWidth="2" />
+                    <circle cx={x} cy={y} r="14" fill="transparent" style={{ cursor: drag === idx ? 'grabbing' : 'grab' }}
+                      onPointerDown={(e) => { e.preventDefault(); (e.currentTarget as Element).setPointerCapture?.(e.pointerId); setDrag(idx); }} />
+                    <circle cx={x} cy={y} r={drag === idx ? 8 : 6} fill="#a855f7" stroke="#ffffff" strokeWidth="2" pointerEvents="none" />
                     <text x={x} y={y - 10} textAnchor="middle" fill="#c084fc" fontSize="10" fontFamily="monospace" fontWeight="bold">
                       {pt.pct}%
                     </text>
